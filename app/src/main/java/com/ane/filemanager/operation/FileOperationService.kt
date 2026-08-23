@@ -1,0 +1,195 @@
+package com.ane.filemanager.operation
+
+import java.io.File
+import java.util.UUID
+
+internal enum class FileFailure {
+    INVALID_NAME,
+    NAME_EXISTS,
+    CREATE_FAILED,
+    RENAME_FAILED,
+    DELETE_FAILED,
+    SOURCE_MISSING,
+    CREATE_DIRECTORY,
+    MOVE_INTO_SELF,
+    COPY_INTO_SELF,
+    COPY_FAILED,
+    MOVE_FAILED,
+    PARTIAL_MOVE,
+    UNKNOWN
+}
+
+internal data class FileProblem(val failure: FileFailure, val subject: String? = null)
+
+internal data class TransferRecord(val original: File, val result: File)
+internal data class TrashRecord(val original: File, val trashed: File)
+
+internal sealed interface FileResult<out T> {
+    data class Success<T>(val value: T) : FileResult<T>
+    data class Failure(val problem: FileProblem) : FileResult<Nothing>
+}
+
+/**
+ * Owns filesystem mutations and reports domain errors only. It deliberately has no Android Context
+ * and no localized strings, so UI language and storage behavior can evolve independently.
+ */
+internal class FileOperationService {
+    fun create(directory: File, name: String, folder: Boolean): FileResult<File> {
+        if (!isValidName(name)) return FileResult.Failure(FileProblem(FileFailure.INVALID_NAME, name))
+        val target = File(directory, name)
+        if (target.exists()) return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, name))
+        val created = try {
+            if (folder) target.mkdir() else target.createNewFile()
+        } catch (_: Exception) {
+            false
+        }
+        return if (created) FileResult.Success(target)
+        else FileResult.Failure(FileProblem(FileFailure.CREATE_FAILED, name))
+    }
+
+    fun rename(file: File, newName: String): FileResult<File> {
+        if (!isValidName(newName)) return FileResult.Failure(FileProblem(FileFailure.INVALID_NAME, newName))
+        if (!file.exists()) return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, file.name))
+        val target = File(file.parentFile, newName)
+        if (target.exists()) return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, newName))
+        return if (file.renameTo(target)) FileResult.Success(target)
+        else FileResult.Failure(FileProblem(FileFailure.RENAME_FAILED, file.name))
+    }
+
+    fun delete(files: List<File>): FileResult<Unit> {
+        files.forEach { file ->
+            if (!file.exists()) return@forEach
+            if (!FileOps.delete(file)) return FileResult.Failure(FileProblem(FileFailure.DELETE_FAILED, file.name))
+        }
+        return FileResult.Success(Unit)
+    }
+
+    fun transfer(sources: List<File>, targetDirectory: File, move: Boolean): FileResult<List<TransferRecord>> {
+        val records = mutableListOf<TransferRecord>()
+        sources.forEach { source ->
+            if (!source.exists()) return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, source.name))
+            try {
+                if (move && source.parentFile?.canonicalFile == targetDirectory.canonicalFile) return@forEach
+                val target = FileOps.availableTarget(targetDirectory, source.name)
+                if (move) FileOps.move(source, target) else FileOps.copy(source, target)
+                records += TransferRecord(source, target)
+            } catch (error: FileOperationException) {
+                return FileResult.Failure(FileProblem(error.failure, error.subject ?: source.name))
+            } catch (_: Exception) {
+                return FileResult.Failure(FileProblem(if (move) FileFailure.MOVE_FAILED else FileFailure.COPY_FAILED, source.name))
+            }
+        }
+        return FileResult.Success(records)
+    }
+
+    fun undoTransfer(records: List<TransferRecord>, moved: Boolean): FileResult<Unit> {
+        records.asReversed().forEach { record ->
+            if (!record.result.exists()) {
+                return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, record.result.name))
+            }
+            if (moved && record.original.exists()) {
+                return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, record.original.name))
+            }
+            try {
+                if (moved) FileOps.move(record.result, record.original)
+                else if (!FileOps.delete(record.result)) {
+                    return FileResult.Failure(FileProblem(FileFailure.DELETE_FAILED, record.result.name))
+                }
+            } catch (error: FileOperationException) {
+                return FileResult.Failure(FileProblem(error.failure, error.subject ?: record.result.name))
+            } catch (_: Exception) {
+                return FileResult.Failure(FileProblem(FileFailure.MOVE_FAILED, record.result.name))
+            }
+        }
+        return FileResult.Success(Unit)
+    }
+
+    fun restorePath(current: File, original: File): FileResult<Unit> {
+        if (!current.exists()) return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, current.name))
+        if (original.exists()) return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, original.name))
+        return try {
+            FileOps.move(current, original)
+            FileResult.Success(Unit)
+        } catch (error: FileOperationException) {
+            FileResult.Failure(FileProblem(error.failure, error.subject ?: current.name))
+        } catch (_: Exception) {
+            FileResult.Failure(FileProblem(FileFailure.MOVE_FAILED, current.name))
+        }
+    }
+
+    fun deleteToTrash(files: List<File>, trashRoot: File): FileResult<List<TrashRecord>> {
+        if (!trashRoot.exists() && !trashRoot.mkdirs()) {
+            return FileResult.Failure(FileProblem(FileFailure.CREATE_DIRECTORY, trashRoot.name))
+        }
+        val batch = File(trashRoot, UUID.randomUUID().toString())
+        if (!batch.mkdir()) return FileResult.Failure(FileProblem(FileFailure.CREATE_DIRECTORY, batch.name))
+        val records = mutableListOf<TrashRecord>()
+        try {
+            files.forEach { file ->
+                if (!file.exists()) return@forEach
+                val trashed = FileOps.availableTarget(batch, file.name)
+                FileOps.move(file, trashed)
+                records += TrashRecord(file, trashed)
+            }
+        } catch (error: Exception) {
+            records.asReversed().forEach { record ->
+                try {
+                    if (record.trashed.exists() && !record.original.exists()) {
+                        FileOps.move(record.trashed, record.original)
+                    }
+                } catch (_: Exception) {
+                    // Best-effort rollback; the original failure is reported below.
+                }
+            }
+            FileOps.delete(batch)
+            val problem = if (error is FileOperationException) {
+                FileProblem(error.failure, error.subject)
+            } else {
+                FileProblem(FileFailure.DELETE_FAILED, files.firstOrNull()?.name)
+            }
+            return FileResult.Failure(problem)
+        }
+        if (records.isEmpty()) FileOps.delete(batch)
+        return FileResult.Success(records)
+    }
+
+    fun restoreTrash(records: List<TrashRecord>): FileResult<Unit> {
+        records.forEach { record ->
+            if (!record.trashed.exists()) {
+                return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, record.trashed.name))
+            }
+            if (record.original.exists()) {
+                return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, record.original.name))
+            }
+        }
+        records.forEach { record ->
+            try {
+                FileOps.move(record.trashed, record.original)
+            } catch (error: FileOperationException) {
+                return FileResult.Failure(FileProblem(error.failure, error.subject ?: record.original.name))
+            } catch (_: Exception) {
+                return FileResult.Failure(FileProblem(FileFailure.MOVE_FAILED, record.original.name))
+            }
+        }
+        removeTrashBatch(records)
+        return FileResult.Success(Unit)
+    }
+
+    fun discardTrash(records: List<TrashRecord>) {
+        removeTrashBatch(records)
+    }
+
+    fun cleanupTrash(trashRoot: File) {
+        if (trashRoot.exists()) FileOps.delete(trashRoot)
+    }
+
+    private fun removeTrashBatch(records: List<TrashRecord>) {
+        val batch = records.firstOrNull()?.trashed?.parentFile ?: return
+        val root = batch.parentFile
+        FileOps.delete(batch)
+        if (root?.listFiles()?.isEmpty() == true) root.delete()
+    }
+
+    private fun isValidName(name: String): Boolean =
+        name.isNotBlank() && name != "." && name != ".." && '/' !in name && '\\' !in name
+}

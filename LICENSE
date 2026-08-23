@@ -1,0 +1,41 @@
+Copyright © 2026 3265204 (https://github.com/3265204)
+and contributors to the ANE — Android Native Explorer project.
+
+Commercial Redistribution
+
+Commercial redistribution of the Software in its original or
+Minimally Modified form is prohibited.
+
+Commercial redistribution of a Modified Product is permitted,
+including distribution without source code, provided that the
+Modified Product contains Substantial Functional Modifications.
+
+"Substantial Functional Modifications" means modifications that add
+material new functionality or capabilities that were not present in
+the Software.
+
+The following changes alone do NOT constitute Substantial Functional
+Modifications:
+
+(a) changing the project name, product name, logo, icon, branding,
+    copyright notice, or other identifying information;
+
+(b) changing colors, themes, text, layout, or other primarily
+    cosmetic user-interface elements;
+
+(c) repackaging, recompiling, containerizing, bundling, or changing
+    installation or deployment methods;
+
+(d) changing configuration files or default settings;
+
+(e) dependency updates, minor bug fixes, localization, translations,
+    documentation changes, or similar maintenance changes;
+
+(f) any combination of the above.
+
+A Modified Product may be distributed commercially under proprietary
+terms and its modifications are not required to be made available in
+source-code form.
+
+However, the copyright notice and this license notice for portions
+derived from the Software must be preserved.

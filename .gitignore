@@ -1,0 +1,26 @@
+# Android Studio and local SDK
+.idea/
+*.iml
+local.properties
+
+# Gradle caches and build outputs
+.gradle/
+/build/
+**/build/
+
+# Native build outputs
+.cxx/
+.externalNativeBuild/
+
+# Signing material
+*.jks
+*.keystore
+keystore.properties
+
+# Local test artifacts
+/testphoto/*
+!/testphoto/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db

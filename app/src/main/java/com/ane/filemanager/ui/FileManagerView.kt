@@ -1,0 +1,669 @@
+package com.ane.filemanager.ui
+
+import android.content.Intent
+import android.graphics.Canvas
+import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.view.HapticFeedbackConstants
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import android.view.WindowInsets
+import com.ane.filemanager.MainActivity
+import com.ane.filemanager.R
+import com.ane.filemanager.input.DesktopAction
+import com.ane.filemanager.input.DesktopShortcut
+import com.ane.filemanager.input.DesktopShortcutResolver
+import com.ane.filemanager.navigation.BrowserTab
+import com.ane.filemanager.navigation.DockSessionController
+import com.ane.filemanager.navigation.DockSessionStore
+import com.ane.filemanager.operation.FileActionController
+import com.ane.filemanager.ui.appearance.AppearanceController
+import com.ane.filemanager.ui.menu.FileMenuController
+import com.ane.filemanager.ui.menu.FileMenuCoordinator
+import com.ane.filemanager.ui.model.MenuKind
+import com.ane.filemanager.ui.model.RenderState
+import com.ane.filemanager.ui.model.UiInsets
+import com.ane.filemanager.ui.motion.GestureTiming
+import com.ane.filemanager.ui.motion.InertialScrollController
+import com.ane.filemanager.ui.motion.ScrollAxis
+import com.ane.filemanager.ui.render.FileManagerRenderer
+import com.ane.filemanager.ui.selection.FileSelectionController
+import java.io.File
+import java.text.Collator
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.max
+
+/** Android View boundary: assembles render state and routes pointer/keyboard events to controllers. */
+internal class FileManagerView(private val host: MainActivity) : View(host) {
+    private val density = resources.displayMetrics.density
+    private fun dp(value: Float) = value * density
+    private val handler = Handler(Looper.getMainLooper())
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val appearance = AppearanceController(context)
+    private val menu = FileMenuController { postInvalidateOnAnimation() }
+    private val renderer = FileManagerRenderer(context) { postInvalidateOnAnimation() }
+    private val inertialScroll = InertialScrollController(context) { postInvalidateOnAnimation() }
+    private val dockInertialScroll = InertialScrollController(context, ScrollAxis.HORIZONTAL) {
+        postInvalidateOnAnimation()
+    }
+    private lateinit var fileActions: FileActionController
+    private lateinit var menus: FileMenuCoordinator
+    private val selection = FileSelectionController(
+        openFile = host::openFile,
+        openDirectory = { navigateTo(it) },
+        invalidate = { invalidate() },
+        doubleClickTimeoutMs = GestureTiming.doubleTapTimeoutMs
+    )
+
+    private val storageRoot = host.initialDirectory()
+    private val dockStore = DockSessionStore(context)
+    private lateinit var dock: DockSessionController
+    private val tabs get() = dock.tabs
+    private val activeTab get() = dock.activeIndex
+    private val currentDirectory get() = dock.currentDirectory
+    private var items = listOf<File>()
+    private var scrollY = 0f
+    private var maxScroll = 0f
+    private var dockScrollX = 0f
+    private var maxDockScroll = 0f
+    private var revealActiveTab = true
+    private var busyText: String? = null
+    private var systemInsets = UiInsets()
+
+    private var downX = 0f
+    private var downY = 0f
+    private var lastX = 0f
+    private var lastY = 0f
+    private var downFile: File? = null
+    private var downTab = -1
+    private var moved = false
+    private var scrolling = false
+    private var dockScrolling = false
+    private var longTriggered = false
+    private var dragging = false
+    private var tabDragging = false
+    private var draggedTab: BrowserTab? = null
+    private var dragCancelHover = false
+    private var dragX = 0f
+    private var dragY = 0f
+    private var slideSelecting = false
+    private var slideCandidateFile: File? = null
+    private var lastSecondaryClickTime = 0L
+    private var lastSecondaryClickX = 0f
+    private var lastSecondaryClickY = 0f
+    private val longPressRunnable = Runnable {
+        if (!moved && (downFile != null || downTab >= 0)) {
+            longTriggered = true
+            val tabIndex = downTab.takeIf { it in tabs.indices }
+            if (tabIndex != null) {
+                val index = tabIndex
+                draggedTab = tabs[index]
+                renderer.restartTabMarquee(index)
+                if (dock.switchTo(index)) {
+                    selection.exitMultiSelect()
+                    scrollY = 0f
+                    refresh()
+                }
+            } else {
+                downFile?.let { file ->
+                    renderer.restartFileMarquee(file)
+                    selection.selectOnLongPress(file)
+                }
+            }
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            invalidate()
+        }
+    }
+
+    private val contentLeft get() = systemInsets.left.toFloat()
+    private val contentRight get() = width - systemInsets.right.toFloat()
+    private val topBarTop get() = systemInsets.top.toFloat()
+    private val topBarBottom get() = topBarTop + renderer.topHeight
+    private val contentBottom get() = renderer.contentBottom(height, systemInsets.bottom)
+
+    init {
+        isFocusable = true
+        isFocusableInTouchMode = true
+        contentDescription = host.getString(R.string.file_manager_description)
+        setLayerType(LAYER_TYPE_HARDWARE, null)
+        val root = storageRoot
+        val storageLabel = s(R.string.storage)
+        val defaultTabs = mutableListOf(BrowserTab(storageLabel, root, true))
+        listOf(
+            "Download" to R.string.downloads,
+            "Documents" to R.string.documents,
+            "Pictures" to R.string.pictures
+        ).forEach { (folder, label) ->
+            File(root, folder).takeIf(File::isDirectory)?.let {
+                defaultTabs += BrowserTab(host.getString(label), it, true)
+            }
+        }
+        val labelForDirectory: (File) -> String = { directory ->
+            if (directory.name == "0") s(R.string.storage)
+            else directory.name.ifBlank { s(R.string.storage) }
+        }
+        val restored = dockStore.restore(root, storageLabel, labelForDirectory)
+        dock = DockSessionController(
+            initialDirectory = root,
+            initialTabs = restored?.tabs ?: defaultTabs,
+            labelFor = labelForDirectory,
+            activeDirectory = restored?.activeDirectory ?: root,
+            onChanged = ::persistDock
+        )
+        persistDock()
+        fileActions = FileActionController(
+            host = host,
+            rootDirectory = root,
+            currentDirectory = { currentDirectory },
+            selectedFiles = selection::files,
+            replaceSelection = selection::replace,
+            exitMultiSelect = selection::exitMultiSelect,
+            setBusy = { message -> busyText = message; invalidate() },
+            refresh = { refresh() }
+        )
+        menus = FileMenuCoordinator(
+            host = host,
+            menu = menu,
+            fileActions = fileActions,
+            appearance = appearance,
+            selection = selection,
+            dock = dock,
+            dp = ::dp,
+            invalidate = { invalidate() },
+            onNavigationChanged = { scrollY = 0f; revealActiveTab = true; refresh() },
+            onLayoutChanged = { scrollY = 0f; revealActiveTab = true; invalidate() },
+            onThemeChanged = { applySystemColors(); invalidate() },
+            openPermissionSettings = { openPermissionSettings() }
+        )
+        applySystemColors()
+        refresh()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        requestFocus()
+    }
+
+    fun close() {
+        handler.removeCallbacksAndMessages(null)
+        inertialScroll.onCancel()
+        dockInertialScroll.onCancel()
+        if (::fileActions.isInitialized) fileActions.close()
+    }
+
+    private fun persistDock() {
+        if (::dock.isInitialized) dockStore.save(tabs, activeTab)
+    }
+
+    override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        systemInsets = if (Build.VERSION.SDK_INT >= 30) {
+            val safe = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            UiInsets(safe.left, safe.top, safe.right, safe.bottom)
+        } else {
+            @Suppress("DEPRECATION")
+            UiInsets(
+                insets.systemWindowInsetLeft,
+                insets.systemWindowInsetTop,
+                insets.systemWindowInsetRight,
+                insets.systemWindowInsetBottom
+            )
+        }
+        invalidate()
+        return insets
+    }
+
+    fun refresh() {
+        if (tabs.isEmpty()) return
+        val listed = currentDirectory.listFiles()?.asSequence()
+            ?.filter { appearance.showHidden || !it.name.startsWith('.') }?.toList().orEmpty()
+        val collator = Collator.getInstance(Locale.getDefault()).apply { strength = Collator.PRIMARY }
+        items = listed.sortedWith(compareBy<File> { !it.isDirectory }
+            .thenComparator { left, right -> collator.compare(left.name, right.name) })
+        selection.retain(items)
+        scrollY = scrollY.coerceAtLeast(0f)
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val menuState = menu.renderState()
+        renderer.draw(canvas, RenderState(
+            tabs = tabs,
+            activeTab = activeTab,
+            items = items,
+            selected = selection.paths,
+            multiSelect = selection.multiSelect,
+            canAccessStorage = host.hasStorageAccess(),
+            canReadDirectory = currentDirectory.canRead(),
+            scrollY = scrollY,
+            dockScrollX = dockScrollX,
+            appearance = appearance.snapshot(),
+            dragging = dragging,
+            tabDragging = tabDragging,
+            draggedTabIndex = draggedTab?.let(tabs::indexOf) ?: -1,
+            dragX = dragX,
+            dragY = dragY,
+            dragCount = selection.dragFiles(downFile).size,
+            menuKind = menuState.kind,
+            menuActions = menuState.actions,
+            menuX = menuState.x,
+            menuY = menuState.y,
+            menuOriginX = menuState.originX,
+            menuOriginY = menuState.originY,
+            busyText = busyText,
+            motion = menuState.motion,
+            insets = systemInsets
+        ))
+        maxScroll = renderer.maxScroll
+        scrollY = scrollY.coerceIn(0f, maxScroll)
+        maxDockScroll = renderer.maxDockScroll
+        dockScrollX = dockScrollX.coerceIn(0f, maxDockScroll)
+        if (revealActiveTab) {
+            revealActiveTab = false
+            val revealed = renderer.scrollToRevealTab(activeTab, dockScrollX)
+            if (revealed != dockScrollX) {
+                dockScrollX = revealed
+                postInvalidateOnAnimation()
+            }
+        }
+    }
+
+    override fun computeScroll() {
+        var changed = false
+        inertialScroll.next(maxScroll)?.let {
+            scrollY = it
+            changed = true
+        }
+        dockInertialScroll.next(maxDockScroll)?.let {
+            dockScrollX = it
+            changed = true
+        }
+        if (changed) postInvalidateOnAnimation()
+    }
+
+    private fun applySystemColors() {
+        host.window.statusBarColor = renderer.surfaceColor(appearance.dark)
+        host.window.navigationBarColor = renderer.surfaceColor(appearance.dark)
+        if (Build.VERSION.SDK_INT >= 23) {
+            host.window.decorView.systemUiVisibility = if (appearance.dark) 0 else SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (handleSecondaryMousePress(event)) return true
+        if (busyText != null) return true
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                requestFocus()
+                inertialScroll.onDown(event)
+                dockInertialScroll.onDown(event)
+                onDown(event.x, event.y)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                inertialScroll.onMove(event)
+                dockInertialScroll.onMove(event)
+                onMove(event.x, event.y)
+            }
+            MotionEvent.ACTION_UP -> {
+                inertialScroll.onUp(event, scrolling, scrollY, maxScroll)
+                dockInertialScroll.onUp(event, dockScrolling, dockScrollX, maxDockScroll)
+                onUp(event.x, event.y)
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                inertialScroll.onCancel()
+                dockInertialScroll.onCancel()
+                if (longTriggered && menu.kind == MenuKind.NONE && !selection.multiSelect) selection.clear()
+                resetGesture()
+            }
+        }
+        return true
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if (handleSecondaryMousePress(event)) return true
+        return super.onGenericMotionEvent(event)
+    }
+
+    private fun handleSecondaryMousePress(event: MotionEvent): Boolean {
+        if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
+        val secondaryPress = when (event.actionMasked) {
+            MotionEvent.ACTION_BUTTON_PRESS -> event.actionButton == MotionEvent.BUTTON_SECONDARY
+            MotionEvent.ACTION_DOWN -> event.buttonState and MotionEvent.BUTTON_SECONDARY != 0
+            else -> false
+        }
+        if (!secondaryPress) return false
+        if (busyText != null) return true
+
+        // Some DeX/Android builds deliver both BUTTON_PRESS and DOWN for one right click.
+        val duplicate = event.eventTime - lastSecondaryClickTime <
+            GestureTiming.SECONDARY_CLICK_DEDUP_TIMEOUT_MS &&
+            max(abs(event.x - lastSecondaryClickX), abs(event.y - lastSecondaryClickY)) < touchSlop
+        if (!duplicate) {
+            lastSecondaryClickTime = event.eventTime
+            lastSecondaryClickX = event.x
+            lastSecondaryClickY = event.y
+            requestFocus()
+            openPointerContextMenu(event.x, event.y)
+        }
+        return true
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val shortcut = DesktopShortcutResolver.resolve(keyCode, event)
+            ?: return super.onKeyDown(keyCode, event)
+        if (busyText != null) return true
+        if (menu.kind != MenuKind.NONE) menu.close { runDesktopShortcut(shortcut) }
+        else runDesktopShortcut(shortcut)
+        return true
+    }
+
+    private fun onDown(x: Float, y: Float) {
+        downX = x; downY = y; lastX = x; lastY = y; dragX = x; dragY = y
+        moved = false; scrolling = false; dockScrolling = false
+        longTriggered = false; dragging = false; tabDragging = false
+        draggedTab = null; dragCancelHover = false; slideSelecting = false
+        slideCandidateFile = null
+        selection.endSlide()
+        // The floating action button is visually above list rows and must also win hit testing.
+        if (menu.kind == MenuKind.NONE && renderer.isFab(
+                width, height, x, y, systemInsets.right, systemInsets.bottom
+            )) {
+            downFile = null
+            downTab = -1
+            return
+        }
+        val inDock = y in contentBottom..(height - systemInsets.bottom).toFloat()
+        if (inDock) {
+            downFile = null
+            downTab = renderer.tabHits.lastOrNull { it.rect.contains(x, y) }?.index ?: -1
+        } else {
+            downFile = renderer.fileHits.lastOrNull { it.rect.contains(x, y) }?.file
+            downTab = -1
+        }
+        // A selection handle is only a slide-selection candidate until the pointer moves.
+        // Keeping the long-press timer alive restores folder dragging from the same area.
+        slideCandidateFile = if (inDock) null else renderer.selectionHandleFile(x, y)
+        if (menu.kind == MenuKind.NONE && (downFile != null || downTab >= 0)) {
+            handler.postDelayed(longPressRunnable, GestureTiming.longPressTimeoutMs)
+        }
+    }
+
+    private fun onMove(x: Float, y: Float) {
+        dragX = x; dragY = y
+        val distance = max(abs(x - downX), abs(y - downY))
+        if (longTriggered && distance > touchSlop) {
+            moved = true
+            when {
+                draggedTab != null -> {
+                    val source = tabs.indexOf(draggedTab)
+                    if (source > 0) {
+                        tabDragging = true
+                        reorderDraggedTab(x)
+                    }
+                }
+                downFile != null -> {
+                    dragging = true
+                    updateDragCancelFeedback(x, y)
+                }
+            }
+        } else if (slideSelecting) {
+            applySlideSelection(x, y)
+            autoScrollSelection(y)
+            moved = true
+        } else if (!longTriggered && distance > touchSlop) {
+            moved = true
+            handler.removeCallbacks(longPressRunnable)
+            if (slideCandidateFile != null) {
+                slideSelecting = true
+                selection.beginSlide(slideCandidateFile!!)
+                applySlideSelection(x, y)
+                autoScrollSelection(y)
+            } else if (downY in contentBottom..(height - systemInsets.bottom).toFloat() &&
+                abs(x - downX) > abs(y - downY)) {
+                dockScrolling = true
+                dockScrollX = (dockScrollX + (lastX - x)).coerceIn(0f, maxDockScroll)
+            } else if (downY in topBarBottom..contentBottom && abs(y - downY) > abs(x - downX)) {
+                scrolling = true
+                scrollY = (scrollY + (lastY - y)).coerceIn(0f, maxScroll)
+            }
+        }
+        lastX = x
+        lastY = y
+        invalidate()
+    }
+
+    private fun onUp(x: Float, y: Float) {
+        handler.removeCallbacks(longPressRunnable)
+        if (menu.kind != MenuKind.NONE) {
+            val dismissedKind = menu.kind
+            val hit = renderer.menuHits.lastOrNull { it.rect.contains(x, y) }
+            val action = hit?.action?.takeIf { it.enabled }
+            menu.close {
+                if (action != null) action.run()
+                else if (dismissedKind == MenuKind.FILE && !selection.multiSelect) selection.clear()
+            }
+            resetGesture()
+            return
+        }
+        when {
+            dragging -> finishDrag(x, y)
+            tabDragging -> Unit
+            slideSelecting -> Unit
+            longTriggered && downFile != null -> menus.showFile(downFile!!, x, y)
+            longTriggered && downTab >= 0 && !moved -> menus.beginTabEdit(downTab, x, y)
+            !moved && y in topBarTop..topBarBottom && x < contentLeft + renderer.appMenuHitWidth ->
+                menus.showApp(topBarTop, topBarBottom, contentLeft)
+            !moved && y in topBarTop..topBarBottom && x < contentLeft + renderer.navigateUpHitWidth -> navigateUp()
+            !moved && y in topBarTop..topBarBottom -> editAddress()
+            !moved && renderer.isFab(width, height, x, y, systemInsets.right, systemInsets.bottom) ->
+                menus.showFab(contentRight, contentBottom, renderer.fabOffset)
+            !moved && downTab >= 0 -> switchTab(downTab)
+            !moved && downFile != null -> {
+                renderer.restartFileMarquee(downFile!!)
+                selection.click(downFile!!)
+            }
+            !moved && y in topBarBottom..contentBottom -> selection.clear()
+        }
+        resetGesture()
+    }
+
+    private fun resetGesture() {
+        handler.removeCallbacks(longPressRunnable)
+        downFile = null; downTab = -1; moved = false; scrolling = false; dockScrolling = false
+        longTriggered = false; dragging = false; tabDragging = false
+        draggedTab = null; dragCancelHover = false
+        slideSelecting = false; slideCandidateFile = null; selection.endSlide()
+        invalidate()
+    }
+
+    private fun reorderDraggedTab(x: Float) {
+        autoScrollDockDuringTabDrag(x)
+        val tab = draggedTab ?: return
+        val from = tabs.indexOf(tab)
+        val to = renderer.tabHits.lastOrNull { it.rect.contains(x, dragY) }?.index ?: return
+        if (from <= 0 || to == from) return
+        val movedTo = dock.moveTab(from, to)
+        if (movedTo != from) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+    }
+
+    private fun autoScrollDockDuringTabDrag(x: Float) {
+        val edge = dp(52f)
+        val delta = when {
+            x < contentLeft + edge -> -dp(12f)
+            x > contentRight - edge -> dp(12f)
+            else -> 0f
+        }
+        if (delta != 0f) dockScrollX = (dockScrollX + delta).coerceIn(0f, maxDockScroll)
+    }
+
+    private fun updateDragCancelFeedback(x: Float, y: Float) {
+        val hovering = renderer.isFab(width, height, x, y, systemInsets.right, systemInsets.bottom)
+        if (hovering && !dragCancelHover) {
+            performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        }
+        dragCancelHover = hovering
+    }
+
+    private fun applySlideSelection(x: Float, y: Float) {
+        renderer.fileAt(x, y)?.let(::applySlideFile)
+    }
+
+    private fun autoScrollSelection(y: Float) {
+        val edge = dp(56f)
+        val delta = when {
+            y < topBarBottom + edge -> -dp(18f)
+            y > contentBottom - edge -> dp(18f)
+            else -> 0f
+        }
+        if (delta != 0f) scrollY = (scrollY + delta).coerceIn(0f, maxScroll)
+    }
+
+    private fun applySlideFile(file: File) {
+        renderer.restartFileMarquee(file)
+        selection.applySlide(file)
+    }
+
+    private fun navigateTo(directory: File) {
+        if (!directory.isDirectory || !directory.canRead()) {
+            host.toast(host.getString(R.string.cannot_read_directory)); return
+        }
+        dock.navigateTo(directory)
+        selection.exitMultiSelect(); scrollY = 0f; revealActiveTab = true; refresh()
+    }
+
+    private fun navigateUp() = currentDirectory.parentFile?.let(::navigateTo) ?: Unit
+
+    private fun switchTab(index: Int) {
+        renderer.restartTabMarquee(index)
+        if (dock.switchTo(index)) {
+            selection.exitMultiSelect(); scrollY = 0f; revealActiveTab = true; refresh()
+        }
+    }
+
+    fun handleBack(): Boolean {
+        if (menu.kind != MenuKind.NONE) { menu.close(); return true }
+        if (dragging || tabDragging) { resetGesture(); return true }
+        if (selection.multiSelect) { selection.exitMultiSelect(); return true }
+        if (!selection.isEmpty) { selection.clear(); return true }
+        val parent = parentForSystemBack() ?: return false
+        if (!dock.navigateBackTo(parent)) return false
+        scrollY = 0f
+        revealActiveTab = true
+        refresh()
+        return true
+    }
+
+    private fun parentForSystemBack(): File? {
+        if (sameDirectory(currentDirectory, storageRoot)) return null
+        return currentDirectory.parentFile?.takeIf { it.isDirectory && it.canRead() }
+    }
+
+    private fun sameDirectory(left: File, right: File): Boolean = try {
+        left.canonicalFile == right.canonicalFile
+    } catch (_: Exception) {
+        left.absolutePath == right.absolutePath
+    }
+
+    private fun openPointerContextMenu(x: Float, y: Float) {
+        val open = {
+            val file = renderer.fileHits.lastOrNull { it.rect.contains(x, y) }?.file
+            val tab = renderer.tabHits.lastOrNull { it.rect.contains(x, y) }?.index
+            when {
+                file != null -> menus.showFile(file, x, y)
+                tab != null -> menus.beginTabEdit(tab, x, y)
+                y in topBarBottom..contentBottom -> {
+                    if (!selection.multiSelect) selection.clear()
+                    menus.showFabAt(x, y, x, y)
+                }
+            }
+        }
+        if (menu.kind != MenuKind.NONE) menu.close(open) else open()
+    }
+
+    private fun runDesktopShortcut(shortcut: DesktopShortcut) {
+        when (shortcut.action) {
+            DesktopAction.COPY -> if (!selection.isEmpty) fileActions.copySelection(false)
+            DesktopAction.CUT -> if (!selection.isEmpty) fileActions.copySelection(true)
+            DesktopAction.PASTE -> if (fileActions.hasClipboard) fileActions.paste()
+            DesktopAction.UNDO -> if (fileActions.canUndo) fileActions.undoLastOperation()
+            DesktopAction.SELECT_ALL -> selection.selectAll(items)
+            DesktopAction.EDIT_ADDRESS -> editAddress()
+            DesktopAction.CREATE_FOLDER -> fileActions.create(true)
+            DesktopAction.RENAME -> if (selection.files().size == 1) fileActions.rename()
+            DesktopAction.DELETE -> if (!selection.isEmpty) fileActions.delete()
+            DesktopAction.OPEN -> openSelectedFile()
+            DesktopAction.REFRESH -> refresh()
+            DesktopAction.HISTORY_BACK -> navigateHistoryBack()
+            DesktopAction.DIRECTORY_UP -> navigateUp()
+            DesktopAction.NEXT_TAB -> switchRelativeTab(1)
+            DesktopAction.PREVIOUS_TAB -> switchRelativeTab(-1)
+            DesktopAction.SWITCH_TAB -> switchTab(shortcut.tabIndex)
+        }
+    }
+
+    private fun openSelectedFile() {
+        val file = selection.files().singleOrNull() ?: return
+        if (file.isDirectory) navigateTo(file) else host.openFile(file)
+    }
+
+    private fun navigateHistoryBack() {
+        if (dock.goBack()) {
+            selection.exitMultiSelect()
+            scrollY = 0f
+            refresh()
+        }
+    }
+
+    private fun switchRelativeTab(direction: Int) {
+        if (tabs.size < 2) return
+        val index = (activeTab + direction + tabs.size) % tabs.size
+        switchTab(index)
+    }
+
+    private fun finishDrag(x: Float, y: Float) {
+        if (renderer.isFab(width, height, x, y, systemInsets.right, systemInsets.bottom)) {
+            host.toast(s(R.string.drag_cancelled))
+            return
+        }
+        val targetTab = renderer.tabHits.lastOrNull { it.rect.contains(x, y) }?.index
+        val targetFolder = renderer.fileHits.lastOrNull { it.file.isDirectory && it.rect.contains(x, y) }?.file
+        val target = when {
+            targetTab != null -> tabs[targetTab].directory
+            targetFolder != null -> targetFolder
+            else -> null
+        }
+        val sources = selection.dragFiles(downFile)
+        if (target == null) { host.toast(s(R.string.drag_no_target)); return }
+        fileActions.move(sources, target)
+    }
+
+    private fun editAddress() {
+        host.promptPath(currentDirectory.absolutePath) { value ->
+            val raw = File(value)
+            val target = (if (raw.isAbsolute) raw else File(currentDirectory, value)).let {
+                try { it.canonicalFile } catch (_: Exception) { it.absoluteFile }
+            }
+            when {
+                target.isDirectory -> navigateTo(target)
+                target.isFile -> host.openFile(target)
+                else -> host.toast(s(R.string.error_path_not_found))
+            }
+        }
+    }
+
+    private fun openPermissionSettings() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            host.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:${host.packageName}")))
+        }
+    }
+
+    private fun s(resId: Int, vararg args: Any): String = host.getString(resId, *args)
+}
