@@ -1,0 +1,1 @@
+{"id":"ane.image","name":"图片查看器","version":"1.0.0","description":"查看、缩放图片并在当前目录的图片之间切换。","defaultLocale":"zh","localizations":{"en":{"name":"Image viewer","description":"View and zoom images, then move between images in the current folder."}},"apiVersion":2,"entryClass":"com.ane.filemanager.plugin.image.ImagePluginEntry","priority":100}

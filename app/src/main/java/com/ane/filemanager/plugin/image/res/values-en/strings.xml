@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="image_screen_back">Back to file manager</string>
+    <string name="image_file_missing">The image no longer exists or is inaccessible</string>
+    <string name="image_decode_failed">Could not decode this image</string>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="audio_back_symbol" translatable="false">‹</string>
+    <string name="audio_note_symbol" translatable="false">♪</string>
+    <string name="audio_zero_time" translatable="false">0:00</string>
+    <string name="audio_play_symbol" translatable="false">▶</string>
+    <string name="audio_pause_symbol" translatable="false">Ⅱ</string>
+    <string name="audio_previous_symbol" translatable="false">‹</string>
+    <string name="audio_next_symbol" translatable="false">›</string>
+    <string name="audio_screen_back">返回文件管理器</string>
+    <string name="audio_file_missing">音频已不存在或无法访问</string>
+    <string name="audio_decode_failed">系统解码器无法播放这个音频</string>
+    <string name="audio_previous">上一个</string>
+    <string name="audio_next">下一个</string>
+    <string name="audio_play">播放</string>
+    <string name="audio_pause">暂停</string>
+</resources>

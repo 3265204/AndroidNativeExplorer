@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="video_back_symbol" translatable="false">‹</string>
+    <string name="video_previous_symbol" translatable="false">‹</string>
+    <string name="video_next_symbol" translatable="false">›</string>
+    <string name="video_screen_back">返回文件管理器</string>
+    <string name="video_file_missing">视频已不存在或无法访问</string>
+    <string name="video_decode_failed">系统解码器无法播放这个视频</string>
+    <string name="video_previous">上一个</string>
+    <string name="video_next">下一个</string>
+</resources>

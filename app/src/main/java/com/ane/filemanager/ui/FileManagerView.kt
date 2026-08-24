@@ -23,7 +23,9 @@ import com.ane.filemanager.navigation.BrowserTab
 import com.ane.filemanager.navigation.DockSessionController
 import com.ane.filemanager.navigation.DockSessionStore
 import com.ane.filemanager.operation.FileActionController
+import com.ane.filemanager.pluginmanager.PluginRegistry
 import com.ane.filemanager.ui.appearance.AppearanceController
+import com.ane.filemanager.ui.directory.DirectoryLoader
 import com.ane.filemanager.ui.menu.FileMenuController
 import com.ane.filemanager.ui.menu.FileMenuCoordinator
 import com.ane.filemanager.ui.model.MenuKind
@@ -34,6 +36,8 @@ import com.ane.filemanager.ui.motion.InertialScrollController
 import com.ane.filemanager.ui.motion.ScrollAxis
 import com.ane.filemanager.ui.render.FileManagerRenderer
 import com.ane.filemanager.ui.selection.FileSelectionController
+import com.ane.filemanager.ui.sort.FileSortController
+import com.ane.filemanager.ui.sort.FileSortMode
 import java.io.File
 import java.text.Collator
 import java.util.Locale
@@ -47,6 +51,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private val handler = Handler(Looper.getMainLooper())
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val appearance = AppearanceController(context)
+    private val sorting = FileSortController(context)
     private val menu = FileMenuController { postInvalidateOnAnimation() }
     private val renderer = FileManagerRenderer(context) { postInvalidateOnAnimation() }
     private val inertialScroll = InertialScrollController(context) { postInvalidateOnAnimation() }
@@ -54,13 +59,26 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         postInvalidateOnAnimation()
     }
     private lateinit var fileActions: FileActionController
+    private lateinit var plugins: PluginRegistry
     private lateinit var menus: FileMenuCoordinator
     private val selection = FileSelectionController(
-        openFile = host::openFile,
+        openFile = ::openFile,
         openDirectory = { navigateTo(it) },
         invalidate = { invalidate() },
         doubleClickTimeoutMs = GestureTiming.doubleTapTimeoutMs
     )
+    private val directoryLoader = DirectoryLoader { directory, loaded ->
+        post {
+            if (!::dock.isInitialized || !sameDirectory(currentDirectory, directory)) return@post
+            renderer.onDirectoryContentsChanged()
+            items = loaded
+            displayedDirectoryPath = directory.absolutePath
+            directoryTransitioning = false
+            selection.retain(items)
+            scrollY = scrollY.coerceAtLeast(0f)
+            invalidate()
+        }
+    }
 
     private val storageRoot = host.initialDirectory()
     private val dockStore = DockSessionStore(context)
@@ -69,6 +87,8 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private val activeTab get() = dock.activeIndex
     private val currentDirectory get() = dock.currentDirectory
     private var items = listOf<File>()
+    private var displayedDirectoryPath: String? = null
+    private var directoryTransitioning = false
     private var scrollY = 0f
     private var maxScroll = 0f
     private var dockScrollX = 0f
@@ -168,18 +188,25 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             setBusy = { message -> busyText = message; invalidate() },
             refresh = { refresh() }
         )
+        plugins = PluginRegistry(
+            activity = host,
+            setBusy = { message -> busyText = message; invalidate() },
+            reportOutput = ::handlePluginOutput
+        )
         menus = FileMenuCoordinator(
             host = host,
             menu = menu,
             fileActions = fileActions,
+            plugins = plugins,
             appearance = appearance,
             selection = selection,
             dock = dock,
+            sorting = sorting,
             dp = ::dp,
             invalidate = { invalidate() },
+            searchCurrentFolder = ::searchCurrentFolder,
             onNavigationChanged = { scrollY = 0f; revealActiveTab = true; refresh() },
             onLayoutChanged = { scrollY = 0f; revealActiveTab = true; invalidate() },
-            onThemeChanged = { applySystemColors(); invalidate() },
             openPermissionSettings = { openPermissionSettings() }
         )
         applySystemColors()
@@ -195,7 +222,14 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         handler.removeCallbacksAndMessages(null)
         inertialScroll.onCancel()
         dockInertialScroll.onCancel()
+        directoryLoader.close()
+        renderer.close()
         if (::fileActions.isInitialized) fileActions.close()
+        if (::plugins.isInitialized) plugins.close()
+    }
+
+    fun persistSession() {
+        if (::dock.isInitialized) dockStore.save(tabs, activeTab, durable = true)
     }
 
     private fun persistDock() {
@@ -221,14 +255,25 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
 
     fun refresh() {
         if (tabs.isEmpty()) return
-        val listed = currentDirectory.listFiles()?.asSequence()
-            ?.filter { appearance.showHidden || !it.name.startsWith('.') }?.toList().orEmpty()
-        val collator = Collator.getInstance(Locale.getDefault()).apply { strength = Collator.PRIMARY }
-        items = listed.sortedWith(compareBy<File> { !it.isDirectory }
-            .thenComparator { left, right -> collator.compare(left.name, right.name) })
-        selection.retain(items)
-        scrollY = scrollY.coerceAtLeast(0f)
-        invalidate()
+        val directory = currentDirectory
+        val changingDirectory = displayedDirectoryPath != directory.absolutePath
+        directoryTransitioning = changingDirectory
+        if (changingDirectory) {
+            selection.clear()
+            invalidate()
+        }
+        val mode = sorting.mode
+        directoryLoader.load(directory, appearance.showHidden) { listed ->
+            val collator = Collator.getInstance(Locale.getDefault()).apply { strength = Collator.PRIMARY }
+            sorting.sorted(listed, mode, collator)
+        }
+    }
+
+    fun handlePluginOutput(output: File, created: Boolean) {
+        if (!output.exists()) return
+        if (created) fileActions.registerCreatedOutput(output)
+        selection.replace(output)
+        refresh()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -259,6 +304,8 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             menuOriginY = menuState.originY,
             busyText = busyText,
             motion = menuState.motion,
+            deferPreviews = scrolling || inertialScroll.isActive,
+            directoryTransitioning = directoryTransitioning,
             insets = systemInsets
         ))
         maxScroll = renderer.maxScroll
@@ -442,11 +489,15 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private fun onUp(x: Float, y: Float) {
         handler.removeCallbacks(longPressRunnable)
         if (menu.kind != MenuKind.NONE) {
+            if (!moved && switchOpenMenuFromLauncher(x, y)) {
+                resetGesture()
+                return
+            }
             val dismissedKind = menu.kind
             val hit = renderer.menuHits.lastOrNull { it.rect.contains(x, y) }
             val action = hit?.action?.takeIf { it.enabled }
             menu.close {
-                if (action != null) action.run()
+                if (action != null) action.runAt?.invoke(x, y) ?: action.run()
                 else if (dismissedKind == MenuKind.FILE && !selection.multiSelect) selection.clear()
             }
             resetGesture()
@@ -461,6 +512,9 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             !moved && y in topBarTop..topBarBottom && x < contentLeft + renderer.appMenuHitWidth ->
                 menus.showApp(topBarTop, topBarBottom, contentLeft)
             !moved && y in topBarTop..topBarBottom && x < contentLeft + renderer.navigateUpHitWidth -> navigateUp()
+            !moved && y in topBarTop..topBarBottom &&
+                renderer.isSortButton(width, x, systemInsets.right) ->
+                menus.showSort(topBarTop, topBarBottom, contentRight)
             !moved && y in topBarTop..topBarBottom -> editAddress()
             !moved && renderer.isFab(width, height, x, y, systemInsets.right, systemInsets.bottom) ->
                 menus.showFab(contentRight, contentBottom, renderer.fabOffset)
@@ -472,6 +526,26 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             !moved && y in topBarBottom..contentBottom -> selection.clear()
         }
         resetGesture()
+    }
+
+    private fun switchOpenMenuFromLauncher(x: Float, y: Float): Boolean {
+        val requested = when {
+            y in topBarTop..topBarBottom && x < contentLeft + renderer.appMenuHitWidth -> MenuKind.APP
+            y in topBarTop..topBarBottom && renderer.isSortButton(width, x, systemInsets.right) -> MenuKind.SORT
+            renderer.isFab(width, height, x, y, systemInsets.right, systemInsets.bottom) -> MenuKind.FAB
+            else -> return false
+        }
+        if (menu.kind == requested) {
+            menu.close()
+        } else {
+            when (requested) {
+                MenuKind.APP -> menus.showApp(topBarTop, topBarBottom, contentLeft)
+                MenuKind.SORT -> menus.showSort(topBarTop, topBarBottom, contentRight)
+                MenuKind.FAB -> menus.showFab(contentRight, contentBottom, renderer.fabOffset)
+                else -> Unit
+            }
+        }
+        return true
     }
 
     private fun resetGesture() {
@@ -535,6 +609,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             host.toast(host.getString(R.string.cannot_read_directory)); return
         }
         dock.navigateTo(directory)
+        sorting.markOpened(directory)
         selection.exitMultiSelect(); scrollY = 0f; revealActiveTab = true; refresh()
     }
 
@@ -543,6 +618,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private fun switchTab(index: Int) {
         renderer.restartTabMarquee(index)
         if (dock.switchTo(index)) {
+            sorting.markOpened(dock.currentDirectory)
             selection.exitMultiSelect(); scrollY = 0f; revealActiveTab = true; refresh()
         }
     }
@@ -554,6 +630,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         if (!selection.isEmpty) { selection.clear(); return true }
         val parent = parentForSystemBack() ?: return false
         if (!dock.navigateBackTo(parent)) return false
+        sorting.markOpened(dock.currentDirectory)
         scrollY = 0f
         revealActiveTab = true
         refresh()
@@ -610,11 +687,12 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
 
     private fun openSelectedFile() {
         val file = selection.files().singleOrNull() ?: return
-        if (file.isDirectory) navigateTo(file) else host.openFile(file)
+        if (file.isDirectory) navigateTo(file) else openFile(file)
     }
 
     private fun navigateHistoryBack() {
         if (dock.goBack()) {
+            sorting.markOpened(dock.currentDirectory)
             selection.exitMultiSelect()
             scrollY = 0f
             refresh()
@@ -652,16 +730,37 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             }
             when {
                 target.isDirectory -> navigateTo(target)
-                target.isFile -> host.openFile(target)
+                target.isFile -> openFile(target)
                 else -> host.toast(s(R.string.error_path_not_found))
             }
         }
+    }
+
+    private fun searchCurrentFolder() {
+        host.showFileSearch(items, ::selectSearchResult)
+    }
+
+    private fun selectSearchResult(file: File) {
+        if (file !in items) return
+        if (selection.multiSelect) selection.exitMultiSelect()
+        selection.replace(file)
+        renderer.restartFileMarquee(file)
+        scrollY = renderer.scrollToRevealFile(file, scrollY)
+        invalidate()
     }
 
     private fun openPermissionSettings() {
         if (Build.VERSION.SDK_INT >= 30) {
             host.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:${host.packageName}")))
+        }
+    }
+
+    private fun openFile(file: File) {
+        val opened = plugins.open(file) || host.openFile(file)
+        if (opened) {
+            sorting.markOpened(file)
+            if (sorting.mode == FileSortMode.LAST_OPENED) refresh()
         }
     }
 

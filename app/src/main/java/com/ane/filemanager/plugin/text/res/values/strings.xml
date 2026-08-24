@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="text_back_symbol" translatable="false">‹</string>
+    <string name="text_editor_back">返回文件管理器</string>
+    <string name="text_file_missing">文本已不存在或无法访问</string>
+    <string name="text_dialog_cancel">取消</string>
+    <string name="editor_save">保存</string>
+    <string name="editor_saved">已保存</string>
+    <string name="editor_load_failed">无法读取此文本文件</string>
+    <string name="editor_save_failed">保存失败，请检查文件权限</string>
+    <string name="editor_file_too_large">文本超过 16 MB，为避免卡顿暂不在内置编辑器中打开</string>
+    <string name="editor_dirty_title">%1$s  •</string>
+    <string name="editor_discard_title">放弃未保存的修改？</string>
+    <string name="editor_discard_message">返回后，本次修改将不会保存。</string>
+    <string name="editor_discard_confirm">放弃修改</string>
+</resources>

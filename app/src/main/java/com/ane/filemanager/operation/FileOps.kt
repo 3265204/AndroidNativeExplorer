@@ -12,6 +12,21 @@ internal class FileOperationException(
 ) : IOException(failure.name, cause)
 
 object FileOps {
+    /**
+     * Returns an unused sibling name by incrementing the stem while leaving the extension intact.
+     * For example: a.txt, a1.txt, a2.txt. Dotfiles such as .env are treated as extensionless.
+     */
+    fun numberedTarget(dir: File, name: String): File {
+        var target = File(dir, name)
+        if (!target.exists()) return target
+        val dot = name.lastIndexOf('.')
+        val stem = if (dot > 0) name.substring(0, dot) else name
+        val extension = if (dot > 0) name.substring(dot) else ""
+        var suffix = 1
+        while (target.exists()) target = File(dir, "$stem${suffix++}$extension")
+        return target
+    }
+
     fun availableTarget(dir: File, name: String): File {
         var target = File(dir, name)
         if (!target.exists()) return target

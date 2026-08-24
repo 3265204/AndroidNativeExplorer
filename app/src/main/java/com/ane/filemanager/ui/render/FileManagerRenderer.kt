@@ -17,6 +17,7 @@ import com.ane.filemanager.ui.model.MenuHit
 import com.ane.filemanager.ui.model.MenuKind
 import com.ane.filemanager.ui.model.RenderState
 import com.ane.filemanager.ui.model.TabHit
+import com.ane.filemanager.ui.theme.AppThemePalette
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,7 +46,9 @@ internal class FileManagerRenderer(private val context: Context, private val onI
     }
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     private val thumbnails = ThumbnailLoader(onInvalidate)
+    private val fileMetadata = hashMapOf<String, FileMetadata>()
     private val marqueeStarts = mutableMapOf<String, Long>()
+    private var resolvedPalette: AppThemePalette? = null
     private lateinit var state: RenderState
     private var width = 0
     private var height = 0
@@ -67,6 +70,8 @@ internal class FileManagerRenderer(private val context: Context, private val onI
     val fabOffset get() = dp(39f)
     val appMenuHitWidth get() = dp(50f)
     val navigateUpHitWidth get() = dp(90f)
+    fun isSortButton(viewWidth: Int, x: Float, rightInset: Int = 0): Boolean =
+        x >= viewWidth - rightInset - dp(58f)
     fun contentBottom(viewHeight: Int, bottomInset: Int = 0) = viewHeight - bottomInset - bottomHeight
 
     fun isFab(
@@ -102,6 +107,33 @@ internal class FileManagerRenderer(private val context: Context, private val onI
         }.coerceIn(0f, maxDockScroll)
     }
 
+    fun scrollToRevealFile(file: File, currentScroll: Float): Float {
+        val index = state.items.indexOf(file)
+        if (index < 0) return currentScroll
+        val viewportTop = topBarBottom
+        val viewportBottom = contentBottom(height, state.insets.bottom)
+        val itemTop: Float
+        val itemBottom: Float
+        if (state.appearance.layoutMode == LayoutMode.LIST) {
+            val rowHeight = dp(max(54, state.appearance.iconDp + state.appearance.spacingDp * 2).toFloat())
+            itemTop = viewportTop + dp(5f) + index * rowHeight - currentScroll
+            itemBottom = itemTop + rowHeight
+        } else {
+            val availableWidth = contentRight - contentLeft
+            val minCell = dp(max(124, state.appearance.iconDp * 2 + 44).toFloat())
+            val columns = max(1, (availableWidth / minCell).toInt())
+            val cellHeight = dp(max(state.appearance.iconDp + 54, 108).toFloat())
+            val rowStride = cellHeight + dp(state.appearance.spacingDp.toFloat())
+            itemTop = viewportTop + dp(10f) + (index / columns) * rowStride - currentScroll
+            itemBottom = itemTop + cellHeight
+        }
+        return when {
+            itemTop < viewportTop -> currentScroll - (viewportTop - itemTop)
+            itemBottom > viewportBottom -> currentScroll + (itemBottom - viewportBottom)
+            else -> currentScroll
+        }.coerceIn(0f, maxScroll)
+    }
+
     fun selectionHandleFile(x: Float, y: Float): File? {
         if (!state.multiSelect) return null
         val hit = fileHits.lastOrNull { it.rect.contains(x, y) } ?: return null
@@ -117,6 +149,7 @@ internal class FileManagerRenderer(private val context: Context, private val onI
         state = renderState
         width = canvas.width
         height = canvas.height
+        thumbnails.setLoadingDeferred(state.deferPreviews)
         canvas.drawColor(color("bg"))
         drawTopBar(canvas)
         drawFiles(canvas)
@@ -128,18 +161,33 @@ internal class FileManagerRenderer(private val context: Context, private val onI
     }
 
     fun color(name: String): Int = when (name) {
-        "bg" -> if (state.appearance.dark) Color.rgb(18, 22, 29) else Color.rgb(248, 250, 252)
-        "surface" -> if (state.appearance.dark) Color.rgb(28, 34, 43) else Color.WHITE
-        "surface2" -> if (state.appearance.dark) Color.rgb(38, 46, 57) else Color.rgb(241, 245, 249)
-        "text" -> if (state.appearance.dark) Color.rgb(235, 240, 247) else Color.rgb(25, 33, 45)
-        "muted" -> if (state.appearance.dark) Color.rgb(160, 171, 186) else Color.rgb(100, 116, 139)
-        "line" -> if (state.appearance.dark) Color.rgb(57, 67, 80) else Color.rgb(226, 232, 240)
-        "selected" -> if (state.appearance.dark) Color.rgb(31, 69, 112) else Color.rgb(219, 234, 254)
-        "primary" -> Color.rgb(59, 130, 246)
+        "bg" -> palette().background
+        "surface" -> palette().surface
+        "surface2" -> palette().surface2
+        "text" -> palette().text
+        "muted" -> palette().muted
+        "line" -> palette().outline
+        "selected" -> palette().selected
+        "primary" -> palette().primary
         else -> Color.MAGENTA
     }
 
-    fun surfaceColor(dark: Boolean): Int = if (dark) Color.rgb(28, 34, 43) else Color.WHITE
+    fun surfaceColor(dark: Boolean): Int = AppThemePalette.resolve(context, dark).surface
+
+    private fun palette(): AppThemePalette {
+        val current = resolvedPalette
+        if (current != null && current.dark == state.appearance.dark) return current
+        return AppThemePalette.resolve(context, state.appearance.dark).also { resolvedPalette = it }
+    }
+
+    fun close() {
+        thumbnails.close()
+    }
+
+    fun onDirectoryContentsChanged() {
+        fileMetadata.clear()
+        thumbnails.onDirectoryContentsChanged()
+    }
 
     private fun text(
         canvas: Canvas, value: String, x: Float, y: Float, sizeSp: Float, color: Int,
@@ -164,14 +212,15 @@ internal class FileManagerRenderer(private val context: Context, private val onI
         canvas.drawRect(contentLeft, topBarBottom - dp(1f), contentRight, topBarBottom, paint)
         canvas.save()
         canvas.clipRect(contentLeft, topBarTop, contentRight, topBarBottom)
-        text(canvas, "☰", menuX, centerY, 23f, color("text"), Paint.Align.CENTER)
-        text(canvas, "↑", upX, centerY, 23f,
+        text(canvas, context.getString(R.string.app_menu_symbol), menuX, centerY, 23f, color("text"), Paint.Align.CENTER)
+        text(canvas, context.getString(R.string.navigate_up_symbol), upX, centerY, 23f,
             if (tab.directory.parentFile != null) color("text") else color("muted"), Paint.Align.CENTER)
         val title = if (state.multiSelect) {
             context.getString(R.string.multi_select_count, state.selected.size)
         } else tab.directory.absolutePath
         val verticalPad = dp(8f)
-        val addressRight = (contentRight - dp(14f)).coerceAtLeast(contentLeft)
+        val sortX = contentRight - dp(29f)
+        val addressRight = (contentRight - dp(62f)).coerceAtLeast(contentLeft)
         val addressLeft = (contentLeft + dp(90f)).coerceAtMost(addressRight)
         val address = RectF(addressLeft, topBarTop + verticalPad, addressRight, topBarBottom - verticalPad)
         paint.color = color("surface2")
@@ -183,6 +232,8 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             RectF(address.left + horizontalPad, address.top, address.right - horizontalPad, address.bottom),
             centerY, if (state.multiSelect) 15f else 14f, color("text"),
             Paint.Align.LEFT, state.multiSelect, false)
+        text(canvas, context.getString(R.string.sort_symbol), sortX, centerY, 22f,
+            color("text"), Paint.Align.CENTER)
         canvas.restore()
     }
 
@@ -208,6 +259,9 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             state.appearance.layoutMode == LayoutMode.LIST -> drawList(canvas, top, bottom)
             else -> drawGrid(canvas, top, bottom)
         }
+        // The previous directory remains as a visual snapshot until the async list is
+        // committed. It must not remain a hit target for the newly active directory.
+        if (state.directoryTransitioning) fileHits.clear()
         canvas.restore()
     }
 
@@ -227,10 +281,14 @@ internal class FileManagerRenderer(private val context: Context, private val onI
         val appearance = state.appearance
         val rowHeight = dp(max(54, appearance.iconDp + appearance.spacingDp * 2).toFloat())
         val startY = top + dp(5f) - state.scrollY
-        state.items.forEachIndexed { index, file ->
+        val firstIndex = ((top - startY) / rowHeight).toInt().coerceIn(state.items.indices)
+        val lastIndex = ((bottom - startY) / rowHeight).toInt().coerceIn(state.items.indices)
+        for (index in firstIndex..lastIndex) {
+            val file = state.items[index]
             val row = RectF(contentLeft + dp(8f), startY + index * rowHeight,
                 contentRight - dp(8f), startY + (index + 1) * rowHeight)
-            if (row.bottom < top || row.top > bottom) return@forEachIndexed
+            if (row.bottom < top || row.top > bottom) continue
+            val metadata = metadata(file)
             RectF(row).takeIf { it.intersect(contentLeft, top, contentRight, bottom) }
                 ?.let { fileHits += FileHit(file, it) }
             if (file.absolutePath in state.selected) {
@@ -239,7 +297,7 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             val iconSize = dp(appearance.iconDp.toFloat())
             val ix = row.left + dp(12f)
             val iy = row.centerY() - iconSize / 2
-            if (file.isDirectory) drawFolderIcon(canvas, ix, iy, iconSize, Color.rgb(245, 176, 65))
+            if (metadata.directory) drawFolderIcon(canvas, ix, iy, iconSize, Color.rgb(245, 176, 65))
             else if (!drawPreview(canvas, file, RectF(ix, iy, ix + iconSize, iy + iconSize))) {
                 drawFileIcon(canvas, ix, iy, iconSize, fileColor(file))
             }
@@ -248,10 +306,10 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             overflowText(canvas, fileMarqueeKey(file), file.name,
                 RectF(tx, row.top, nameRight, row.centerY() + dp(1f)),
                 row.centerY() - dp(8f), appearance.textSp.toFloat(), color("text"),
-                Paint.Align.LEFT, file.isDirectory, file.absolutePath in state.selected)
-            val timestamp = dateFormat.format(Date(file.lastModified()))
-            val detail = if (file.isDirectory) context.getString(R.string.folder_detail, timestamp)
-            else context.getString(R.string.file_detail, FileSizeFormatter.format(file.length()), timestamp)
+                Paint.Align.LEFT, metadata.directory, file.absolutePath in state.selected)
+            val timestamp = dateFormat.format(Date(metadata.lastModified))
+            val detail = if (metadata.directory) context.getString(R.string.folder_detail, timestamp)
+            else context.getString(R.string.file_detail, FileSizeFormatter.format(metadata.size), timestamp)
             overflowText(canvas, "static:file-detail:${file.absolutePath}", detail,
                 RectF(tx, row.centerY(), nameRight, row.bottom), row.centerY() + dp(14f),
                 11f, color("muted"), Paint.Align.LEFT, false, false)
@@ -273,13 +331,20 @@ internal class FileManagerRenderer(private val context: Context, private val onI
         val rowGap = dp(appearance.spacingDp.toFloat())
         val rowStride = cellH + rowGap
         val startY = top + dp(10f) - state.scrollY
-        state.items.forEachIndexed { index, file ->
+        val rows = ceil(state.items.size / cols.toFloat()).toInt()
+        val firstRow = ((top - startY) / rowStride).toInt().coerceIn(0, rows - 1)
+        val lastRow = ((bottom - startY) / rowStride).toInt().coerceIn(0, rows - 1)
+        val firstIndex = firstRow * cols
+        val lastIndexExclusive = min(state.items.size, (lastRow + 1) * cols)
+        for (index in firstIndex until lastIndexExclusive) {
+            val file = state.items[index]
             val col = index % cols
             val rowIndex = index / cols
             val rowTop = startY + rowIndex * rowStride
             val rect = RectF(contentLeft + col * cellW + dp(6f), rowTop,
                 contentLeft + (col + 1) * cellW - dp(6f), rowTop + cellH)
-            if (rect.bottom < top || rect.top > bottom) return@forEachIndexed
+            if (rect.bottom < top || rect.top > bottom) continue
+            val metadata = metadata(file)
             RectF(rect).takeIf { it.intersect(contentLeft, top, contentRight, bottom) }
                 ?.let { fileHits += FileHit(file, it) }
             if (file.absolutePath in state.selected) {
@@ -288,20 +353,20 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             val iconSize = dp(appearance.iconDp.toFloat())
             val previewBottom = min(rect.top + dp(74f), rect.bottom - dp(38f))
             val previewRect = RectF(rect.left + dp(8f), rect.top + dp(8f), rect.right - dp(8f), previewBottom)
-            val hasPreview = !file.isDirectory && drawPreview(canvas, file, previewRect)
+            val hasPreview = !metadata.directory && drawPreview(canvas, file, previewRect)
             val iconY = if (thumbnails.isPreviewable(file)) previewRect.centerY() - iconSize / 2
             else rect.top + dp(12f)
             if (!hasPreview) {
                 val ix = rect.centerX() - iconSize / 2
-                if (file.isDirectory) drawFolderIcon(canvas, ix, iconY, iconSize, Color.rgb(245, 176, 65))
+                if (metadata.directory) drawFolderIcon(canvas, ix, iconY, iconSize, Color.rgb(245, 176, 65))
                 else drawFileIcon(canvas, ix, iconY, iconSize, fileColor(file))
             }
             overflowText(canvas, fileMarqueeKey(file), file.name,
                 RectF(rect.left + dp(7f), rect.bottom - dp(44f), rect.right - dp(7f), rect.bottom - dp(17f)),
                 rect.bottom - dp(29f), appearance.textSp.toFloat(), color("text"),
-                Paint.Align.CENTER, file.isDirectory, file.absolutePath in state.selected)
-            if (!file.isDirectory) overflowText(canvas, "static:file-size:${file.absolutePath}",
-                FileSizeFormatter.format(file.length()),
+                Paint.Align.CENTER, metadata.directory, file.absolutePath in state.selected)
+            if (!metadata.directory) overflowText(canvas, "static:file-size:${file.absolutePath}",
+                FileSizeFormatter.format(metadata.size),
                 RectF(rect.left + dp(7f), rect.bottom - dp(20f), rect.right - dp(7f), rect.bottom),
                 rect.bottom - dp(10f), 10f, color("muted"), Paint.Align.CENTER, false, false)
             if (state.multiSelect) {
@@ -309,7 +374,6 @@ internal class FileManagerRenderer(private val context: Context, private val onI
                 else drawEmptyCheck(canvas, rect.right - dp(13f), rect.top + dp(14f))
             }
         }
-        val rows = ceil(state.items.size / cols.toFloat()).toInt()
         val contentHeight = rows * cellH + max(0, rows - 1) * rowGap
         maxScroll = max(0f, contentHeight + dp(20f) - (bottom - top))
     }
@@ -362,7 +426,11 @@ internal class FileManagerRenderer(private val context: Context, private val onI
 
     private fun drawPreview(canvas: Canvas, file: File, destination: RectF): Boolean {
         if (!thumbnails.isPreviewable(file)) return false
-        val bitmap = thumbnails.get(file, max(destination.width(), destination.height()).toInt()) ?: return false
+        val bitmap = thumbnails.get(
+            file,
+            destination.width().toInt(),
+            destination.height().toInt()
+        ) ?: return false
         val sourceRatio = bitmap.width.toFloat() / bitmap.height
         val targetRatio = destination.width() / destination.height()
         val source = if (sourceRatio > targetRatio) {
@@ -401,6 +469,16 @@ internal class FileManagerRenderer(private val context: Context, private val onI
         "txt", "md", "json", "xml", "kt", "java" -> Color.rgb(59, 130, 246)
         else -> Color.rgb(100, 116, 139)
     }
+
+    private fun metadata(file: File): FileMetadata = fileMetadata.getOrPut(file.absolutePath) {
+        FileMetadata(file.isDirectory, file.length(), file.lastModified())
+    }
+
+    private data class FileMetadata(
+        val directory: Boolean,
+        val size: Long,
+        val lastModified: Long
+    )
 
     private fun drawFab(canvas: Canvas) {
         val cx = contentRight - fabOffset
@@ -511,7 +589,7 @@ internal class FileManagerRenderer(private val context: Context, private val onI
         canvas.save()
         canvas.clipRect(contentLeft, topBarBottom, contentRight,
             contentBottom(height, state.insets.bottom))
-        fileHits.firstOrNull { it.file.isDirectory && it.rect.contains(state.dragX, state.dragY) }?.let {
+        fileHits.firstOrNull { metadata(it.file).directory && it.rect.contains(state.dragX, state.dragY) }?.let {
             stroke.color = color("primary"); stroke.strokeWidth = dp(3f)
             canvas.drawRoundRect(it.rect, dp(10f), dp(10f), stroke)
         }
@@ -566,7 +644,9 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             menuHits += MenuHit(action, rect)
             overflowText(canvas, "static:menu:$index", action.label,
                 RectF(rect.left + dp(17f), rect.top, rect.right - dp(12f), rect.bottom),
-                rect.centerY(), 15f, if (action.enabled) color("text") else color("muted"),
+                rect.centerY(), 15f, fadeColor(
+                    if (action.enabled) color("text") else color("muted"), progress
+                ),
                 Paint.Align.LEFT, false, false)
         }
         canvas.restore()
@@ -677,4 +757,9 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             (Color.blue(a) * inverse + Color.blue(b) * ratio).toInt()
         )
     }
+
+    private fun fadeColor(color: Int, progress: Float): Int = Color.argb(
+        (Color.alpha(color) * progress.coerceIn(0f, 1f)).toInt(),
+        Color.red(color), Color.green(color), Color.blue(color)
+    )
 }

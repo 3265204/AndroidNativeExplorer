@@ -99,7 +99,8 @@ internal class DockSessionController(
     }
 
     fun unpin(index: Int) {
-        if (index !in tabs.indices || !tabs[index].pinned) return
+        // Storage is the permanent anchor and must remain fixed at index zero.
+        if (index !in tabs.indices || index == 0 || !tabs[index].pinned) return
         val active = currentTab
         val tab = tabs.removeAt(index).apply { pinned = false }
         tabs += tab
@@ -121,11 +122,42 @@ internal class DockSessionController(
         return true
     }
 
+    /** Closes every temporary tab while preserving all pinned locations and one usable tab. */
+    fun closeTemporaryTabs(): Int {
+        val temporaryCount = tabs.count { !it.pinned }
+        if (temporaryCount == 0) return 0
+        val active = currentTab
+        val pinned = tabs.filter(BrowserTab::pinned)
+        val closeableCount = temporaryCount - if (pinned.isEmpty()) 1 else 0
+        if (closeableCount <= 0) return 0
+        val retained = if (pinned.isNotEmpty()) pinned else listOf(active)
+        tabs.clear()
+        tabs += retained
+        activeIndex = tabs.indexOf(active).takeIf { it >= 0 } ?: 0
+        onChanged()
+        return closeableCount
+    }
+
     fun rename(index: Int, label: String) {
         if (index in tabs.indices) {
             tabs[index].label = label
             onChanged()
         }
+    }
+
+    fun indexOfDirectory(directory: File): Int = find(directory)
+
+    /** Rebinds one tab to a different readable directory without keeping stale back history. */
+    fun changeDirectory(index: Int, directory: File): Boolean {
+        if (index !in tabs.indices || index == 0 || !directory.isDirectory || !directory.canRead()) return false
+        val existing = find(directory)
+        if (existing >= 0 && existing != index) return false
+        val tab = tabs[index]
+        if (same(tab.directory, directory)) return false
+        tab.directory = directory
+        tab.history.clear()
+        onChanged()
+        return true
     }
 
     /** Reorders tabs while keeping the pinned storage tab locked at index zero. */

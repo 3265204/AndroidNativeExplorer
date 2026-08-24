@@ -6,6 +6,7 @@
 
 - [architecture.md](architecture.md)：模块划分、数据流、状态和线程模型。
 - [development.md](development.md)：编码规范、功能修改流程和关键约束。
+- [plugins.md](plugins.md)：热插拔协议、插件 manifest、边界、安全与验收规范。
 - [testing.md](testing.md)：编译、ADB 安装、模拟器和真机回归测试。
 
 ## 推荐阅读顺序
@@ -20,7 +21,10 @@ ane/
 │  └─ src/main/
 │     ├─ AndroidManifest.xml
 │     ├─ java/com/ane/filemanager/
-│     └─ res/
+│     │  ├─ pluginmanager/   安装、发现、启停及自有 res
+│     │  └─ plugin/          相互独立且各自带 res 的内置插件
+│     └─ res/                仅文件管理器核心资源
+├─ plugin-api/              插件开发 SDK（AAR）
 ├─ docs/
 ├─ testphoto/
 ├─ README.md

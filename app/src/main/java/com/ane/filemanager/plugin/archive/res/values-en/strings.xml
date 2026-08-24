@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="archive_action_extract">Extract</string>
+    <string name="archive_action_compress">Add to archive</string>
+    <string name="archive_choose_format">Choose archive format</string>
+    <string name="archive_format_zip">ZIP</string>
+    <string name="archive_format_7z">7z</string>
+    <string name="archive_format_tar">TAR</string>
+    <string name="archive_format_tar_gzip">TAR.GZ</string>
+    <string name="archive_cancel">Cancel</string>
+    <string name="archive_default_name">Archive</string>
+    <string name="archive_status_compressing">Creating archive…</string>
+    <string name="archive_compression_complete">Compression complete</string>
+    <string name="archive_error_compress_failed">Could not create the archive; check file and folder permissions</string>
+    <string name="archive_password_title">“%1$s” requires a password</string>
+    <string name="archive_status_extracting">Extracting…</string>
+    <string name="archive_status_checking">Checking archive…</string>
+    <string name="archive_operation_complete">Extraction complete</string>
+    <string name="archive_error_source_missing">The archive no longer exists</string>
+    <string name="archive_error_unsupported">This archive type is not supported</string>
+    <string name="archive_error_corrupt">Archive “%1$s” is damaged or invalid</string>
+    <string name="archive_error_unsafe">The archive contains an unsafe path; extraction was stopped</string>
+    <string name="archive_error_password_required">This archive requires a password</string>
+    <string name="archive_error_wrong_password">Incorrect password. Try again</string>
+    <string name="archive_error_create_directory">Could not create folder “%1$s”</string>
+    <string name="archive_error_name_exists">An extraction folder with that name already exists</string>
+    <string name="archive_error_extract_failed">Could not extract “%1$s”; check file and folder permissions</string>
+    <string name="archive_error_missing_volume">Volume “%1$s” is missing; place every volume in the same folder</string>
+</resources>

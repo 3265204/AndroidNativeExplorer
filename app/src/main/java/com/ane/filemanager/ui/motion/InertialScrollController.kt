@@ -20,6 +20,8 @@ internal class InertialScrollController(
     private val maximumVelocity = ViewConfiguration.get(context).scaledMaximumFlingVelocity
     private var velocityTracker: VelocityTracker? = null
 
+    val isActive: Boolean get() = !scroller.isFinished
+
     fun onDown(event: MotionEvent) {
         if (!scroller.isFinished) scroller.abortAnimation()
         velocityTracker?.recycle()

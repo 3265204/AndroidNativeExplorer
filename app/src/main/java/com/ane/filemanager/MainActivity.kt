@@ -2,8 +2,8 @@ package com.ane.filemanager
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -11,32 +11,64 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.view.View
 import android.webkit.MimeTypeMap
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.text.InputType
 import com.ane.filemanager.provider.LocalFileProvider
+import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.ui.FileManagerView
-import com.ane.filemanager.viewer.ViewerRouter
+import com.ane.filemanager.ui.dialog.AneDialog
+import com.ane.filemanager.ui.dialog.AneDialogAction
+import com.ane.filemanager.ui.search.CurrentFolderSearch
 import java.io.File
 
 class MainActivity : Activity() {
+    private lateinit var contentRoot: FrameLayout
     private lateinit var fileView: FileManagerView
+    private var fullscreenOverlay: View? = null
+    private var fullscreenOverlayBack: (() -> Unit)? = null
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(AppLanguage.wrap(base))
+    }
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         if (Build.VERSION.SDK_INT >= 24) {
             android.os.StrictMode.setVmPolicy(android.os.StrictMode.VmPolicy.Builder().build())
         }
+        contentRoot = FrameLayout(this)
         fileView = FileManagerView(this)
-        setContentView(fileView)
+        contentRoot.addView(fileView, FrameLayout.LayoutParams(-1, -1))
+        setContentView(contentRoot)
         ensureStorageAccess()
+    }
+
+    fun showFullscreenOverlay(view: View, onBack: () -> Unit) {
+        fullscreenOverlay?.let(contentRoot::removeView)
+        fullscreenOverlay = view
+        fullscreenOverlayBack = onBack
+        contentRoot.addView(view, FrameLayout.LayoutParams(-1, -1))
+        view.requestApplyInsets()
+    }
+
+    fun removeFullscreenOverlay(view: View) {
+        if (fullscreenOverlay !== view) return
+        contentRoot.removeView(view)
+        fullscreenOverlay = null
+        fullscreenOverlayBack = null
     }
 
     override fun onResume() {
         super.onResume()
         if (::fileView.isInitialized) fileView.refresh()
+    }
+
+    override fun onStop() {
+        if (::fileView.isInitialized) fileView.persistSession()
+        super.onStop()
     }
 
     override fun onDestroy() {
@@ -74,72 +106,70 @@ class MainActivity : Activity() {
         ?.takeIf(File::isDirectory) ?: getExternalFilesDir(null) ?: filesDir
 
     fun promptName(title: String, initial: String, callback: (String) -> Unit) {
-        val input = EditText(this).apply {
-            isSingleLine = true
-            setText(initial)
-            setSelectAllOnFocus(true)
-        }
-        val pad = (24 * resources.displayMetrics.density).toInt()
-        val holder = FrameLayout(this).apply {
-            setPadding(pad, 0, pad, 0)
-            addView(input, FrameLayout.LayoutParams(-1, -2))
-        }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(title).setView(holder)
-            .setNegativeButton(R.string.dialog_cancel, null).setPositiveButton(R.string.dialog_confirm, null).create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val value = input.text.toString().trim()
-                if (value.isEmpty() || value == "." || value == ".." || value.contains('/') || value.contains('\\')) {
-                    input.error = getString(R.string.dialog_invalid_name)
-                } else {
-                    callback(value)
-                    dialog.dismiss()
+        AneDialog.input(
+            activity = this,
+            title = title,
+            initial = initial,
+            inputType = InputType.TYPE_CLASS_TEXT,
+            confirmLabel = getString(R.string.dialog_confirm),
+            cancelLabel = getString(R.string.dialog_cancel),
+            validate = { value ->
+                getString(R.string.dialog_invalid_name).takeIf {
+                    value.isEmpty() || value == "." || value == ".." ||
+                        value.contains('/') || value.contains('\\')
                 }
-            }
-            input.requestFocus()
-            dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-        }
-        dialog.show()
+            },
+            onConfirm = callback
+        )
     }
 
     fun promptPath(initial: String, callback: (String) -> Unit) {
-        val input = EditText(this).apply {
-            isSingleLine = true
-            setText(initial)
-            setSelectAllOnFocus(true)
-            hint = getString(R.string.dialog_path_hint)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-        }
-        val pad = (24 * resources.displayMetrics.density).toInt()
-        val holder = FrameLayout(this).apply {
-            setPadding(pad, 0, pad, 0)
-            addView(input, FrameLayout.LayoutParams(-1, -2))
-        }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.dialog_path_title).setView(holder)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_confirm, null).create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val value = input.text.toString().trim()
-                if (value.isEmpty()) input.error = getString(R.string.dialog_invalid_name)
-                else { callback(value); dialog.dismiss() }
-            }
-            input.requestFocus()
-            dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-        }
-        dialog.show()
+        AneDialog.input(
+            activity = this,
+            title = getString(R.string.dialog_path_title),
+            initial = initial,
+            hint = getString(R.string.dialog_path_hint),
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
+            confirmLabel = getString(R.string.dialog_confirm),
+            cancelLabel = getString(R.string.dialog_cancel),
+            validate = { value -> getString(R.string.dialog_invalid_name).takeIf { value.isEmpty() } },
+            onConfirm = callback
+        )
+    }
+
+    fun showFileSearch(files: List<File>, callback: (File) -> Unit) {
+        AneDialog.liveSearch(
+            activity = this,
+            title = getString(R.string.search_current_folder),
+            hint = getString(R.string.search_query_hint),
+            startTypingText = getString(R.string.search_start_typing),
+            noResultsText = getString(R.string.search_no_results),
+            resultCount = { getString(R.string.search_results_title, it) },
+            cancelLabel = getString(R.string.dialog_cancel),
+            items = files,
+            label = File::getName,
+            filter = CurrentFolderSearch::matches,
+            onSelected = callback
+        )
     }
 
     fun confirm(title: String, message: String, action: () -> Unit) {
-        AlertDialog.Builder(this).setTitle(title).setMessage(message)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_confirm) { _, _ -> action() }.show()
+        AneDialog.message(this, title, message, listOf(
+            AneDialogAction(getString(R.string.dialog_cancel)),
+            AneDialogAction(getString(R.string.dialog_confirm), primary = true, run = action)
+        ))
     }
 
-    fun openFile(file: File) {
-        if (ViewerRouter.open(this, file)) return
+    fun resolveNameConflict(name: String, onReplace: () -> Unit, onKeepBoth: () -> Unit) {
+        AneDialog.message(this, getString(R.string.dialog_name_conflict_title),
+            getString(R.string.dialog_name_conflict_message, name), listOf(
+                AneDialogAction(getString(R.string.dialog_cancel)),
+                AneDialogAction(getString(R.string.dialog_keep_both), run = onKeepBoth),
+                AneDialogAction(getString(R.string.dialog_replace), primary = true, run = onReplace)
+            ))
+    }
+
+    fun openFile(file: File): Boolean {
         val ext = MimeTypeMap.getFileExtensionFromUrl(file.name).lowercase()
         val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
         val uri = LocalFileProvider.uriFor(this, file)
@@ -149,8 +179,10 @@ class MainActivity : Activity() {
         }
         try {
             startActivity(intent)
+            return true
         } catch (_: ActivityNotFoundException) {
             toast(getString(R.string.no_viewer))
+            return false
         }
     }
 
@@ -158,12 +190,16 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        fullscreenOverlayBack?.let {
+            it()
+            return
+        }
         if (::fileView.isInitialized && fileView.handleBack()) return
-        AlertDialog.Builder(this)
-            .setTitle(R.string.dialog_exit_title)
-            .setMessage(R.string.dialog_exit_message)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_exit_confirm) { _, _ -> finish() }
-            .show()
+        AneDialog.message(this, getString(R.string.dialog_exit_title),
+            getString(R.string.dialog_exit_message), listOf(
+                AneDialogAction(getString(R.string.dialog_cancel)),
+                AneDialogAction(getString(R.string.dialog_exit_confirm), primary = true, run = ::finish)
+            ))
     }
+
 }

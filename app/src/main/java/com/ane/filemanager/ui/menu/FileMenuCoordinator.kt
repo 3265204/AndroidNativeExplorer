@@ -4,11 +4,16 @@ import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
 import com.ane.filemanager.navigation.DockSessionController
 import com.ane.filemanager.operation.FileActionController
+import com.ane.filemanager.pluginmanager.PluginRegistry
+import com.ane.filemanager.ui.pluginmanager.PluginManagerDialog
 import com.ane.filemanager.ui.appearance.AppearanceController
-import com.ane.filemanager.ui.model.LayoutMode
 import com.ane.filemanager.ui.model.MenuAction
 import com.ane.filemanager.ui.model.MenuKind
 import com.ane.filemanager.ui.selection.FileSelectionController
+import com.ane.filemanager.ui.sort.FileSortController
+import com.ane.filemanager.ui.sort.FileSortMode
+import com.ane.filemanager.ui.settings.SettingsDialog
+import com.ane.filemanager.ui.tabmanager.TabManagerDialog
 import java.io.File
 
 /** Builds context menus and routes their commands to focused controllers. */
@@ -16,16 +21,44 @@ internal class FileMenuCoordinator(
     private val host: MainActivity,
     private val menu: FileMenuController,
     private val fileActions: FileActionController,
+    private val plugins: PluginRegistry,
     private val appearance: AppearanceController,
     private val selection: FileSelectionController,
     private val dock: DockSessionController,
+    private val sorting: FileSortController,
     private val dp: (Float) -> Float,
     private val invalidate: () -> Unit,
+    private val searchCurrentFolder: () -> Unit,
     private val onNavigationChanged: () -> Unit,
     private val onLayoutChanged: () -> Unit,
-    private val onThemeChanged: () -> Unit,
     private val openPermissionSettings: () -> Unit
 ) {
+    fun showSort(topBarTop: Float, topBarBottom: Float, contentRight: Float) {
+        val actions = buildList {
+            add(MenuAction(s(R.string.search_current_folder), run = searchCurrentFolder))
+            FileSortMode.entries.forEach { mode ->
+                val label = s(when (mode) {
+                    FileSortMode.NAME -> R.string.sort_name
+                    FileSortMode.MODIFIED -> R.string.sort_modified
+                    FileSortMode.SIZE -> R.string.sort_size
+                    FileSortMode.LAST_OPENED -> R.string.sort_last_opened
+                })
+                add(MenuAction(if (mode == sorting.mode) s(R.string.sort_selected, label) else label) {
+                    sorting.select(mode)
+                    onNavigationChanged()
+                })
+            }
+        }
+        menu.open(
+            MenuKind.SORT,
+            actions,
+            contentRight - dp(235f),
+            topBarBottom + dp(7f),
+            contentRight - dp(29f),
+            (topBarTop + topBarBottom) / 2f
+        )
+    }
+
     fun showFab(contentRight: Float, contentBottom: Float, fabOffset: Float) {
         val actions = fabActions()
         openFab(
@@ -43,9 +76,6 @@ internal class FileMenuCoordinator(
 
     private fun fabActions() = buildList {
         val hasSelection = !selection.isEmpty
-        if (fileActions.canUndo) {
-            add(MenuAction(s(R.string.action_undo)) { fileActions.undoLastOperation() })
-        }
         add(MenuAction(s(if (selection.multiSelect) {
             R.string.action_exit_multi_select
         } else {
@@ -56,6 +86,9 @@ internal class FileMenuCoordinator(
         if (hasSelection) {
             add(MenuAction(s(R.string.action_copy_selected)) { fileActions.copySelection(false) })
             add(MenuAction(s(R.string.action_cut_selected)) { fileActions.copySelection(true) })
+            plugins.selectionActions(selection.files()).forEach { action ->
+                add(MenuAction(action.label, run = action.run))
+            }
         }
         if (fileActions.hasClipboard) {
             add(MenuAction(s(R.string.action_paste_here)) { fileActions.paste() })
@@ -63,6 +96,11 @@ internal class FileMenuCoordinator(
         if (hasSelection) {
             add(MenuAction(s(R.string.action_delete_selected)) { fileActions.delete() })
         }
+        add(MenuAction(
+            label = s(R.string.action_undo),
+            enabled = fileActions.canUndo,
+            run = fileActions::undoLastOperation
+        ))
         add(MenuAction(s(R.string.action_new_file)) { fileActions.create(false) })
         add(MenuAction(s(R.string.action_new_folder)) { fileActions.create(true) })
     }
@@ -80,6 +118,16 @@ internal class FileMenuCoordinator(
     fun showFile(file: File, x: Float, y: Float) {
         selection.prepareContext(file)
         val actions = buildList {
+            add(MenuAction(s(if (selection.multiSelect) {
+                R.string.action_exit_multi_select
+            } else {
+                R.string.action_enter_multi_select
+            })) {
+                if (selection.multiSelect) selection.exitMultiSelect() else selection.enterMultiSelect()
+            })
+            plugins.contextActions(file).forEach { action ->
+                add(MenuAction(action.label, run = action.run))
+            }
             add(MenuAction(s(R.string.action_copy)) { fileActions.copySelection(false) })
             add(MenuAction(s(R.string.action_cut)) { fileActions.copySelection(true) })
             if (selection.size == 1) {
@@ -92,35 +140,20 @@ internal class FileMenuCoordinator(
 
     fun showApp(topBarTop: Float, topBarBottom: Float, contentLeft: Float) {
         val actions = buildList {
-            add(
-            MenuAction(s(R.string.setting_layout,
-                s(if (appearance.layoutMode == LayoutMode.LIST) R.string.layout_list else R.string.layout_grid))) {
-                appearance.toggleLayout(); onLayoutChanged()
-            })
-            add(
-            MenuAction(s(R.string.setting_theme,
-                s(if (appearance.dark) R.string.theme_dark else R.string.theme_light))) {
-                appearance.toggleTheme(); onThemeChanged()
-            })
-            add(
-            MenuAction(s(R.string.setting_text_size, appearance.textSp)) {
-                appearance.cycleTextSize(); invalidate()
-            })
-            add(
-            MenuAction(s(R.string.setting_icon_size, appearance.iconDp)) {
-                appearance.cycleIconSize(); invalidate()
-            })
-            add(
-            MenuAction(s(R.string.setting_spacing, appearance.spacingDp)) {
-                appearance.cycleSpacing(); invalidate()
-            })
-            add(
-            MenuAction(s(if (appearance.showHidden) R.string.setting_hide_hidden else R.string.setting_show_hidden)) {
-                appearance.toggleHidden(); onNavigationChanged()
-            })
-            if (!host.hasStorageAccess()) {
-                add(MenuAction(s(R.string.setting_storage_permission)) { openPermissionSettings() })
-            }
+            add(MenuAction(
+                label = s(R.string.setting_settings),
+                runAt = { x, y -> showSettings(x, y) }
+            ))
+            add(MenuAction(
+                label = s(R.string.setting_tab_manager),
+                runAt = { x, y -> showTabManager(x, y) }
+            ))
+            add(MenuAction(
+                label = s(R.string.setting_plugins),
+                runAt = { x, y ->
+                    PluginManagerDialog(host, plugins, dock.currentDirectory, x, y).show()
+                }
+            ))
         }
         menu.open(
             MenuKind.APP,
@@ -130,6 +163,19 @@ internal class FileMenuCoordinator(
             contentLeft + dp(27f),
             (topBarTop + topBarBottom) / 2f
         )
+    }
+
+    private fun showSettings(originX: Float, originY: Float) {
+        SettingsDialog(
+            host = host,
+            appearance = appearance,
+            originX = originX,
+            originY = originY,
+            onLayoutChanged = onLayoutChanged,
+            onAppearanceChanged = invalidate,
+            onFilesChanged = onNavigationChanged,
+            openPermissionSettings = openPermissionSettings
+        ).show()
     }
 
     fun beginTabEdit(index: Int, x: Float, y: Float) {
@@ -143,15 +189,37 @@ internal class FileMenuCoordinator(
 
     private fun showTab(index: Int, x: Float, y: Float) {
         val tab = dock.tabs[index]
-        val actions = if (tab.pinned) listOf(
-            MenuAction(s(R.string.action_unpin_tab)) { dock.unpin(index); invalidate() },
-            MenuAction(s(R.string.action_rename_tab)) { renameTab(index) }
-        ) else listOf(
-            MenuAction(s(R.string.action_pin_tab)) { dock.pin(index); invalidate() },
-            MenuAction(s(R.string.action_rename_tab)) { renameTab(index) },
-            MenuAction(s(R.string.action_close_tab)) { closeTemporaryTab(index) }
-        )
-        menu.open(MenuKind.TAB, actions, x, y - dp(if (tab.pinned) 112f else 160f), x, y)
+        val actions = buildList {
+            add(MenuAction(
+                label = s(R.string.setting_tab_manager),
+                runAt = { originX, originY -> showTabManager(originX, originY) }
+            ))
+            if (index > 0) add(MenuAction(s(if (tab.pinned) {
+                R.string.action_unpin_tab
+            } else {
+                R.string.action_pin_tab
+            })) {
+                if (tab.pinned) dock.unpin(index) else dock.pin(index)
+                invalidate()
+            })
+            add(MenuAction(s(R.string.action_rename_tab)) { renameTab(index) })
+            if (!tab.pinned) add(MenuAction(s(R.string.action_close_tab)) { closeTemporaryTab(index) })
+        }
+        menu.open(MenuKind.TAB, actions, x, y - dp(actions.size * 48f + 16f), x, y)
+    }
+
+    private fun showTabManager(originX: Float, originY: Float) {
+        TabManagerDialog(
+            host = host,
+            dock = dock,
+            originX = originX,
+            originY = originY,
+            onActiveTabChanged = {
+                selection.exitMultiSelect()
+                onNavigationChanged()
+            },
+            onTabsChanged = invalidate
+        ).show()
     }
 
     private fun closeTemporaryTab(index: Int) {

@@ -1,0 +1,1 @@
+{"id":"ane.text","name":"文本编辑器","version":"1.0.0","description":"读取和保存多种编码文本，支持缩进与基础代码高亮。","defaultLocale":"zh","localizations":{"en":{"name":"Text editor","description":"Read and save text in multiple encodings with indentation and basic syntax highlighting."}},"apiVersion":2,"entryClass":"com.ane.filemanager.plugin.text.TextPluginEntry","priority":50}

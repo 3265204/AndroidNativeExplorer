@@ -17,6 +17,7 @@ internal class DockSessionStore(context: Context) {
 
     fun restore(storageRoot: File, storageLabel: String, labelFor: (File) -> String): RestoredDockSession? {
         val raw = preferences.getString(KEY_STATE, null) ?: return null
+        val restoreTemporaryTabs = restoresTemporaryTabs()
         return runCatching {
             val state = JSONObject(raw)
             if (state.optInt("version", 0) != VERSION) return@runCatching null
@@ -31,6 +32,8 @@ internal class DockSessionStore(context: Context) {
 
             for (index in 0 until savedTabs.length()) {
                 val saved = savedTabs.optJSONObject(index) ?: continue
+                val pinned = saved.optBoolean("pinned", false)
+                if (!pinned && !restoreTemporaryTabs) continue
                 val directory = saved.optString("path").takeIf(String::isNotBlank)?.let(::File) ?: continue
                 if (!directory.isDirectory || !directory.canRead()) continue
                 val canonical = canonicalPath(directory)
@@ -44,7 +47,7 @@ internal class DockSessionStore(context: Context) {
                 restored += BrowserTab(
                     label = saved.optString("label").ifBlank { labelFor(directory) },
                     directory = directory,
-                    pinned = saved.optBoolean("pinned", false),
+                    pinned = pinned,
                     history = history
                 )
             }
@@ -56,7 +59,13 @@ internal class DockSessionStore(context: Context) {
         }.getOrNull()
     }
 
-    fun save(tabs: List<BrowserTab>, activeIndex: Int) {
+    fun restoresTemporaryTabs(): Boolean = preferences.getBoolean(KEY_RESTORE_TEMPORARY_TABS, false)
+
+    fun setRestoreTemporaryTabs(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_RESTORE_TEMPORARY_TABS, enabled).apply()
+    }
+
+    fun save(tabs: List<BrowserTab>, activeIndex: Int, durable: Boolean = false) {
         if (tabs.isEmpty()) return
         val savedTabs = JSONArray()
         tabs.forEach { tab ->
@@ -74,9 +83,8 @@ internal class DockSessionStore(context: Context) {
             put("activePath", canonicalPath(tabs[activeIndex.coerceIn(tabs.indices)].directory))
             put("tabs", savedTabs)
         }
-        // Dock changes are infrequent and the payload is tiny. A synchronous commit
-        // guarantees that an immediate force-stop cannot race the disk write.
-        preferences.edit().putString(KEY_STATE, state.toString()).commit()
+        val edit = preferences.edit().putString(KEY_STATE, state.toString())
+        if (durable) edit.commit() else edit.apply()
     }
 
     private fun canonicalPath(file: File): String = try {
@@ -88,6 +96,7 @@ internal class DockSessionStore(context: Context) {
     private companion object {
         const val PREFERENCES = "dock_sessions"
         const val KEY_STATE = "state"
+        const val KEY_RESTORE_TEMPORARY_TABS = "restore_temporary_tabs"
         const val VERSION = 1
     }
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="image_back_symbol" translatable="false">‹</string>
+    <string name="image_screen_back">返回文件管理器</string>
+    <string name="image_file_missing">图片已不存在或无法访问</string>
+    <string name="image_decode_failed">无法解码这张图片</string>
+</resources>

@@ -23,6 +23,13 @@ internal data class FileProblem(val failure: FileFailure, val subject: String? =
 
 internal data class TransferRecord(val original: File, val result: File)
 internal data class TrashRecord(val original: File, val trashed: File)
+internal data class RenameRecord(
+    val original: File,
+    val result: File,
+    val replaced: List<TrashRecord> = emptyList()
+)
+
+internal enum class RenameConflictPolicy { FAIL, REPLACE, KEEP_BOTH }
 
 internal sealed interface FileResult<out T> {
     data class Success<T>(val value: T) : FileResult<T>
@@ -36,8 +43,7 @@ internal sealed interface FileResult<out T> {
 internal class FileOperationService {
     fun create(directory: File, name: String, folder: Boolean): FileResult<File> {
         if (!isValidName(name)) return FileResult.Failure(FileProblem(FileFailure.INVALID_NAME, name))
-        val target = File(directory, name)
-        if (target.exists()) return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, name))
+        val target = FileOps.numberedTarget(directory, name)
         val created = try {
             if (folder) target.mkdir() else target.createNewFile()
         } catch (_: Exception) {
@@ -47,13 +53,56 @@ internal class FileOperationService {
         else FileResult.Failure(FileProblem(FileFailure.CREATE_FAILED, name))
     }
 
-    fun rename(file: File, newName: String): FileResult<File> {
+    fun rename(
+        file: File,
+        newName: String,
+        conflictPolicy: RenameConflictPolicy = RenameConflictPolicy.FAIL,
+        trashRoot: File? = null
+    ): FileResult<RenameRecord> {
         if (!isValidName(newName)) return FileResult.Failure(FileProblem(FileFailure.INVALID_NAME, newName))
         if (!file.exists()) return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, file.name))
-        val target = File(file.parentFile, newName)
-        if (target.exists()) return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, newName))
-        return if (file.renameTo(target)) FileResult.Success(target)
-        else FileResult.Failure(FileProblem(FileFailure.RENAME_FAILED, file.name))
+        val directory = file.parentFile
+            ?: return FileResult.Failure(FileProblem(FileFailure.RENAME_FAILED, file.name))
+        val requested = File(directory, newName)
+        if (sameFile(file, requested)) return FileResult.Success(RenameRecord(file, file))
+
+        val target = when {
+            !requested.exists() -> requested
+            conflictPolicy == RenameConflictPolicy.KEEP_BOTH -> FileOps.numberedTarget(directory, newName)
+            conflictPolicy == RenameConflictPolicy.REPLACE -> requested
+            else -> return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, newName))
+        }
+
+        var replaced = emptyList<TrashRecord>()
+        if (target.exists()) {
+            val root = trashRoot
+                ?: return FileResult.Failure(FileProblem(FileFailure.RENAME_FAILED, file.name))
+            when (val movedAside = deleteToTrash(listOf(target), root)) {
+                is FileResult.Success -> replaced = movedAside.value
+                is FileResult.Failure -> return movedAside
+            }
+        }
+
+        if (file.renameTo(target)) return FileResult.Success(RenameRecord(file, target, replaced))
+        if (replaced.isNotEmpty()) restoreTrash(replaced)
+        return FileResult.Failure(FileProblem(FileFailure.RENAME_FAILED, file.name))
+    }
+
+    fun undoRename(record: RenameRecord): FileResult<Unit> {
+        if (sameFile(record.original, record.result)) return FileResult.Success(Unit)
+        when (val restoredName = restorePath(record.result, record.original)) {
+            is FileResult.Failure -> return restoredName
+            is FileResult.Success -> Unit
+        }
+        if (record.replaced.isEmpty()) return FileResult.Success(Unit)
+        return when (val restoredTarget = restoreTrash(record.replaced)) {
+            is FileResult.Success -> restoredTarget
+            is FileResult.Failure -> {
+                // Preserve the completed rename if its replaced target cannot be restored.
+                restorePath(record.original, record.result)
+                restoredTarget
+            }
+        }
     }
 
     fun delete(files: List<File>): FileResult<Unit> {
@@ -175,10 +224,6 @@ internal class FileOperationService {
         return FileResult.Success(Unit)
     }
 
-    fun discardTrash(records: List<TrashRecord>) {
-        removeTrashBatch(records)
-    }
-
     fun cleanupTrash(trashRoot: File) {
         if (trashRoot.exists()) FileOps.delete(trashRoot)
     }
@@ -192,4 +237,10 @@ internal class FileOperationService {
 
     private fun isValidName(name: String): Boolean =
         name.isNotBlank() && name != "." && name != ".." && '/' !in name && '\\' !in name
+
+    private fun sameFile(left: File, right: File): Boolean = try {
+        left.canonicalFile == right.canonicalFile
+    } catch (_: Exception) {
+        left.absolutePath == right.absolutePath
+    }
 }

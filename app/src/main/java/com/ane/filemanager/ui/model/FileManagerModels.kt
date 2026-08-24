@@ -10,10 +10,15 @@ internal data class MotionSnapshot(
 
 internal data class FileHit(val file: File, val rect: RectF)
 internal data class TabHit(val index: Int, val rect: RectF)
-internal data class MenuAction(val label: String, val enabled: Boolean = true, val run: () -> Unit)
+internal data class MenuAction(
+    val label: String,
+    val enabled: Boolean = true,
+    val runAt: ((x: Float, y: Float) -> Unit)? = null,
+    val run: () -> Unit = {}
+)
 internal data class MenuHit(val action: MenuAction, val rect: RectF)
 internal enum class LayoutMode { LIST, GRID }
-internal enum class MenuKind { NONE, FAB, FILE, APP, TAB }
+internal enum class MenuKind { NONE, FAB, FILE, APP, SORT, TAB }
 
 internal data class UiInsets(
     val left: Int = 0,
@@ -55,5 +60,7 @@ internal data class RenderState(
     val menuOriginY: Float,
     val busyText: String?,
     val motion: MotionSnapshot,
+    val deferPreviews: Boolean = false,
+    val directoryTransitioning: Boolean = false,
     val insets: UiInsets = UiInsets()
 )

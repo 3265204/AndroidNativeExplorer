@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="secondary_page_back_symbol" translatable="false">‹</string>
     <string name="app_name">ANE — Android Native Explorer</string>
     <string name="storage">存储</string>
     <string name="downloads">下载</string>
@@ -15,25 +16,9 @@
     <string name="empty_directory_hint">点击右下角 + 新建文件或文件夹</string>
     <string name="no_viewer">没有可打开此类型文件的应用</string>
     <string name="file_manager_description">本地文件管理器</string>
-    <string name="viewer_back">返回文件管理器</string>
-    <string name="viewer_file_missing">文件已不存在或无法访问</string>
-    <string name="viewer_image_failed">无法解码这张图片</string>
-    <string name="viewer_video_failed">系统解码器无法播放这个视频</string>
-    <string name="viewer_audio_failed">系统解码器无法播放这个音频</string>
-    <string name="audio_play">播放</string>
-    <string name="audio_pause">暂停</string>
-    <string name="viewer_previous">上一个</string>
-    <string name="viewer_next">下一个</string>
-    <string name="editor_save">保存</string>
-    <string name="editor_saved">已保存</string>
-    <string name="editor_load_failed">无法读取此文本文件</string>
-    <string name="editor_save_failed">保存失败，请检查文件权限</string>
-    <string name="editor_file_too_large">文本超过 16 MB，为避免卡顿暂不在内置编辑器中打开</string>
-    <string name="editor_dirty_title">%1$s  •</string>
-    <string name="editor_discard_title">放弃未保存的修改？</string>
-    <string name="editor_discard_message">返回后，本次修改将不会保存。</string>
-    <string name="editor_discard_confirm">放弃修改</string>
-
+    <string name="app_menu_symbol" translatable="false">☰</string>
+    <string name="navigate_up_symbol" translatable="false">↑</string>
+    <string name="sort_symbol" translatable="false">⇅</string>
     <string name="folder_detail">文件夹  ·  %1$s</string>
     <string name="file_detail">%1$s  ·  %2$s</string>
     <string name="selected_count">已选择 %1$d 项  ·  点击空白处退出</string>
@@ -60,13 +45,38 @@
     <string name="action_unpin_tab">取消固定标签栏</string>
     <string name="action_rename_tab">重命名标签</string>
 
-    <string name="setting_layout">显示模式：%1$s</string>
-    <string name="setting_theme">主题：%1$s</string>
-    <string name="setting_text_size">字体大小：%1$dsp</string>
-    <string name="setting_icon_size">图标大小：%1$ddp</string>
-    <string name="setting_spacing">行间距：%1$ddp</string>
-    <string name="setting_show_hidden">显示隐藏文件</string>
-    <string name="setting_hide_hidden">隐藏隐藏文件</string>
+    <string name="setting_language">选择语言</string>
+    <string name="setting_settings">设置</string>
+    <string name="settings_title">设置</string>
+    <string name="settings_close_page">返回文件管理器</string>
+    <string name="settings_summary">语言、主题与文件显示</string>
+    <string name="settings_language_title">选择语言</string>
+    <string name="settings_theme_title">主题</string>
+    <string name="settings_layout_title">显示模式</string>
+    <string name="settings_text_size_title">字体大小</string>
+    <string name="settings_icon_size_title">图标大小</string>
+    <string name="settings_spacing_title">行间距</string>
+    <string name="settings_hidden_title">显示隐藏文件</string>
+    <string name="settings_hidden_hint">在文件列表中显示以点开头的文件</string>
+    <string name="settings_storage_permission_hint">打开 Android 的存储访问设置</string>
+    <string name="settings_value_sp">%1$d sp</string>
+    <string name="settings_value_dp">%1$d dp</string>
+    <string name="settings_choice_indicator" translatable="false">›</string>
+    <string name="settings_choice_description">%1$s，当前为%2$s</string>
+    <string name="setting_tab_manager">管理标签页</string>
+    <string name="language_system">跟随系统</string>
+    <string name="language_chinese">中文</string>
+    <string name="language_english">English</string>
+    <string name="sort_name">按文件名排列</string>
+    <string name="sort_modified">按修改时间排列</string>
+    <string name="sort_size">按文件大小排列</string>
+    <string name="sort_last_opened">按上次打开日期排列</string>
+    <string name="sort_selected">✓ %1$s</string>
+    <string name="search_current_folder">搜索当前文件夹</string>
+    <string name="search_query_hint">输入完整名称或名称片段</string>
+    <string name="search_no_results">当前文件夹中没有匹配项</string>
+    <string name="search_results_title">搜索结果（%1$d）</string>
+    <string name="search_start_typing">输入名称后将实时显示结果</string>
     <string name="setting_new_tab">新建标签页</string>
     <string name="setting_storage_permission">存储权限设置</string>
     <string name="layout_list">列表</string>
@@ -74,11 +84,39 @@
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
 
+    <string name="tab_manager_title">标签页管理</string>
+    <string name="tab_manager_close_page">返回文件管理器</string>
+    <string name="tab_manager_summary">共 %1$d 个标签 · %2$d 个临时标签</string>
+    <string name="tab_manager_summary_reorder">共 %1$d 个标签 · %2$d 个临时标签 · 长按卡片排序</string>
+    <string name="tab_manager_restore_title">启动恢复</string>
+    <string name="tab_manager_restore_pinned">仅固定</string>
+    <string name="tab_manager_restore_all">全部标签</string>
+    <string name="tab_manager_restore_pinned_hint">重新启动时只恢复固定标签，临时标签仅保留在当前会话</string>
+    <string name="tab_manager_restore_all_hint">重新启动时同时恢复固定标签和临时标签</string>
+    <string name="tab_manager_close_all_temporary">关闭全部临时标签</string>
+    <string name="tab_manager_active">当前</string>
+    <string name="tab_manager_pinned">固定</string>
+    <string name="tab_manager_temporary">临时</string>
+    <string name="tab_manager_pin">固定</string>
+    <string name="tab_manager_unpin">取消固定</string>
+    <string name="tab_manager_rename">重命名</string>
+    <string name="tab_manager_change_directory">更改目录</string>
+    <string name="tab_manager_close">关闭</string>
+    <string name="tab_manager_directory_title">更改标签目录</string>
+    <string name="tab_manager_directory_hint">输入可读取文件夹的绝对路径</string>
+    <string name="tab_manager_directory_invalid">目录不存在或无法读取</string>
+    <string name="tab_manager_directory_duplicate">该目录已由其他标签打开</string>
+    <string name="tab_manager_closed_count">已关闭 %1$d 个临时标签</string>
+
     <string name="dialog_cancel">取消</string>
     <string name="dialog_confirm">确定</string>
     <string name="dialog_invalid_name">请输入有效名称</string>
     <string name="dialog_new_empty_file">新建空文件</string>
     <string name="dialog_rename">重命名</string>
+    <string name="dialog_name_conflict_title">名称已存在</string>
+    <string name="dialog_name_conflict_message">“%1$s”已经存在。要替换原文件，还是同时保留两个文件？</string>
+    <string name="dialog_replace">替换</string>
+    <string name="dialog_keep_both">同时保留</string>
     <string name="dialog_rename_tab">重命名标签</string>
     <string name="dialog_path_title">输入文件地址</string>
     <string name="dialog_path_hint">绝对路径或当前目录下的相对路径</string>
@@ -95,6 +133,7 @@
     <string name="status_moving_count">正在移动 %1$d 项…</string>
     <string name="status_deleting">正在删除…</string>
     <string name="status_undoing">正在撤回…</string>
+    <string name="status_renaming">正在重命名…</string>
     <string name="operation_complete">操作完成</string>
     <string name="clipboard_set">已%1$s %2$d 项</string>
     <string name="verb_copy">复制</string>

@@ -18,47 +18,60 @@ internal class AppearanceController(context: Context) {
         private set
     var dark: Boolean = prefs.getBoolean("dark", false)
         private set
-    var textSp: Int = prefs.getInt("textSp", 16)
+    var textSp: Int = prefs.getInt("textSp", 16).coerceIn(TEXT_SIZE_MIN_SP, TEXT_SIZE_MAX_SP)
         private set
-    var iconDp: Int = prefs.getInt("iconDp", 34)
+    var iconDp: Int = prefs.getInt("iconDp", 34).coerceIn(ICON_SIZE_MIN_DP, ICON_SIZE_MAX_DP)
         private set
-    var spacingDp: Int = prefs.getInt("spacingDp", 8)
+    var spacingDp: Int = prefs.getInt("spacingDp", 8).coerceIn(SPACING_MIN_DP, SPACING_MAX_DP)
         private set
 
     fun snapshot() = AppearanceSettings(layoutMode, dark, textSp, iconDp, spacingDp)
 
-    fun toggleLayout() {
-        layoutMode = if (layoutMode == LayoutMode.LIST) LayoutMode.GRID else LayoutMode.LIST
+    fun setLayoutMode(value: LayoutMode) {
+        if (layoutMode == value) return
+        layoutMode = value
         prefs.edit().putString("layout", if (layoutMode == LayoutMode.GRID) "grid" else "list").apply()
     }
 
-    fun toggleTheme() {
-        dark = !dark
+    fun setDark(value: Boolean) {
+        if (dark == value) return
+        dark = value
         prefs.edit().putBoolean("dark", dark).apply()
     }
 
-    fun cycleTextSize() {
-        textSp = nextOf(textSp, intArrayOf(14, 16, 18, 20))
+    fun setTextSize(value: Int) {
+        val safe = value.coerceIn(TEXT_SIZE_MIN_SP, TEXT_SIZE_MAX_SP)
+        if (textSp == safe) return
+        textSp = safe
         prefs.edit().putInt("textSp", textSp).apply()
     }
 
-    fun cycleIconSize() {
-        iconDp = nextOf(iconDp, intArrayOf(28, 34, 42, 50))
+    fun setIconSize(value: Int) {
+        val safe = value.coerceIn(ICON_SIZE_MIN_DP, ICON_SIZE_MAX_DP)
+        if (iconDp == safe) return
+        iconDp = safe
         prefs.edit().putInt("iconDp", iconDp).apply()
     }
 
-    fun cycleSpacing() {
-        spacingDp = nextOf(spacingDp, intArrayOf(4, 8, 12, 16))
+    fun setSpacing(value: Int) {
+        val safe = value.coerceIn(SPACING_MIN_DP, SPACING_MAX_DP)
+        if (spacingDp == safe) return
+        spacingDp = safe
         prefs.edit().putInt("spacingDp", spacingDp).apply()
     }
 
-    fun toggleHidden() {
-        showHidden = !showHidden
+    fun setShowHidden(value: Boolean) {
+        if (showHidden == value) return
+        showHidden = value
         prefs.edit().putBoolean("showHidden", showHidden).apply()
     }
 
-    private fun nextOf(current: Int, values: IntArray): Int {
-        val index = values.indexOf(current)
-        return values[(if (index < 0) 0 else index + 1) % values.size]
+    companion object {
+        const val TEXT_SIZE_MIN_SP = 12
+        const val TEXT_SIZE_MAX_SP = 24
+        const val ICON_SIZE_MIN_DP = 24
+        const val ICON_SIZE_MAX_DP = 56
+        const val SPACING_MIN_DP = 0
+        const val SPACING_MAX_DP = 24
     }
 }

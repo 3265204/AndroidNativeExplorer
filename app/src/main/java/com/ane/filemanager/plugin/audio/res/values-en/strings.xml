@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="audio_screen_back">Back to file manager</string>
+    <string name="audio_file_missing">The audio file no longer exists or is inaccessible</string>
+    <string name="audio_decode_failed">The system decoder cannot play this audio</string>
+    <string name="audio_previous">Previous</string>
+    <string name="audio_next">Next</string>
+    <string name="audio_play">Play</string>
+    <string name="audio_pause">Pause</string>
+</resources>

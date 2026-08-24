@@ -1,0 +1,1 @@
+{"id":"ane.audio","name":"音频播放器","version":"1.0.0","description":"播放当前目录的音频文件并提供进度与曲目切换。","defaultLocale":"zh","localizations":{"en":{"name":"Audio player","description":"Play audio in the current folder with seeking and track navigation."}},"apiVersion":2,"entryClass":"com.ane.filemanager.plugin.audio.AudioPluginEntry","priority":100}

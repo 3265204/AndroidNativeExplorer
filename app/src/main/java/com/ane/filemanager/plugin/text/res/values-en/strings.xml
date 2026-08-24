@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="text_editor_back">Back to file manager</string>
+    <string name="text_file_missing">The text file no longer exists or is inaccessible</string>
+    <string name="text_dialog_cancel">Cancel</string>
+    <string name="editor_save">Save</string>
+    <string name="editor_saved">Saved</string>
+    <string name="editor_load_failed">Could not read this text file</string>
+    <string name="editor_save_failed">Save failed; check file permissions</string>
+    <string name="editor_file_too_large">This file is over 16 MB and cannot be opened in the built-in editor without risking poor performance</string>
+    <string name="editor_dirty_title">%1$s  •</string>
+    <string name="editor_discard_title">Discard unsaved changes?</string>
+    <string name="editor_discard_message">Your changes will not be saved.</string>
+    <string name="editor_discard_confirm">Discard</string>
+</resources>

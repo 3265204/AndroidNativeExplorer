@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="setting_plugins">管理插件</string>
+    <string name="plugin_dialog_cancel">取消</string>
+    <string name="plugin_dialog_confirm">确定</string>
+    <string name="plugin_manager_close">返回</string>
+    <string name="plugin_zip_badge" translatable="false">ZIP</string>
+    <string name="plugin_fallback_initial" translatable="false">P</string>
+    <string name="plugin_manager_title">插件管理</string>
+    <string name="plugin_manager_summary">已启用 %1$d 个 · 共 %2$d 个</string>
+    <string name="plugin_import_current_folder">从当前文件夹导入</string>
+    <string name="plugin_choose_zip">选择 ZIP</string>
+    <string name="plugin_choose_zip_title">选择插件 ZIP</string>
+    <string name="plugin_no_zip_title">当前文件夹没有 ZIP</string>
+    <string name="plugin_no_zip_message">请先在 ANE 中进入插件 ZIP 所在的文件夹，再打开插件管理。\n\n当前文件夹：%1$s</string>
+    <string name="plugin_install">导入</string>
+    <string name="plugin_enable">启用</string>
+    <string name="plugin_disable">停用</string>
+    <string name="plugin_remove">卸载</string>
+    <string name="plugin_remove_title">卸载插件？</string>
+    <string name="plugin_remove_message">将删除“%1$s”的程序文件，是否继续？</string>
+    <string name="plugin_source_bundled">内置</string>
+    <string name="plugin_source_imported">已导入</string>
+    <string name="plugin_card_version">版本 %1$s</string>
+    <string name="plugin_no_description">此插件未提供说明</string>
+    <string name="plugin_status_enabled">运行中</string>
+    <string name="plugin_status_disabled">已停用</string>
+    <string name="plugin_status_error">异常</string>
+    <string name="plugin_load_error">加载失败：%1$s</string>
+    <string name="plugin_installed">插件已安装并立即生效</string>
+    <string name="plugin_runtime_error">插件“%1$s”运行失败</string>
+    <string name="plugin_unknown_error">插件操作失败</string>
+    <string name="plugin_install_warning_title">导入插件代码？</string>
+    <string name="plugin_install_zip_warning">即将导入“%1$s”。ZIP 内的插件代码会在 ANE 进程中运行，并拥有与文件管理器相同的文件访问权限。请只导入可信来源的插件；安装时会校验清单与代码的 SHA-256。</string>
+    <string name="status_installing_plugin">正在安装插件…</string>
+    <string name="plugin_error_choose_zip">请选择 ZIP 插件包</string>
+    <string name="plugin_error_storage_create">无法创建插件存储目录</string>
+    <string name="plugin_error_package_size">插件包大小无效或超过 64 MiB</string>
+    <string name="plugin_error_manifest_missing">插件包缺少 plugin.json</string>
+    <string name="plugin_error_manifest_size">plugin.json 大小无效</string>
+    <string name="plugin_error_manifest_invalid">plugin.json 内容或字段无效</string>
+    <string name="plugin_error_id_invalid">插件 ID 格式无效</string>
+    <string name="plugin_error_name_invalid">插件名称无效</string>
+    <string name="plugin_error_entry_invalid">插件入口类名称无效</string>
+    <string name="plugin_error_digest_missing">导入插件必须声明 codeSha256</string>
+    <string name="plugin_error_api_incompatible">插件 API %1$d 与当前 API %2$d 不兼容</string>
+    <string name="plugin_error_dex_missing">插件包缺少 classes.dex</string>
+    <string name="plugin_error_dex_size">classes.dex 大小无效</string>
+    <string name="plugin_error_digest_mismatch">classes.dex 完整性校验失败，请让插件作者重新生成 codeSha256</string>
+    <string name="plugin_error_directory_create">无法创建插件目录</string>
+    <string name="plugin_error_code_read_only">无法将插件代码设为只读</string>
+    <string name="plugin_error_code_not_read_only">插件代码必须保持只读</string>
+    <string name="plugin_error_delete_file">无法删除“%1$s”</string>
+    <string name="plugin_error_unpacked_too_large">插件包解压内容超过限制</string>
+    <string name="plugin_error_package_too_large">插件包超过大小限制</string>
+    <string name="plugin_error_entry_contract">入口类未实现 AnePlugin</string>
+</resources>

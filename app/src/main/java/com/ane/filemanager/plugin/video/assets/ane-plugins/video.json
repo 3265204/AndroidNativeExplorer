@@ -1,0 +1,1 @@
+{"id":"ane.video","name":"视频播放器","version":"1.0.0","description":"播放视频并在当前目录的视频之间切换。","defaultLocale":"zh","localizations":{"en":{"name":"Video player","description":"Play video and move between videos in the current folder."}},"apiVersion":2,"entryClass":"com.ane.filemanager.plugin.video.VideoPluginEntry","priority":100}

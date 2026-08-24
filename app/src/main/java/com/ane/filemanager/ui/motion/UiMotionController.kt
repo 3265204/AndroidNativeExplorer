@@ -10,15 +10,22 @@ import com.ane.filemanager.ui.model.MotionSnapshot
 internal class UiMotionController(private val invalidate: () -> Unit) {
     private var menuProgress = 1f
     private var menuAnimator: ValueAnimator? = null
+    private var closing = false
 
     fun openMenu() {
+        closing = false
         menuAnimator?.cancel()
         menuProgress = 0f
         animateMenuTo(1f, 240L)
     }
 
     fun closeMenu(after: () -> Unit) {
-        animateMenuTo(0f, 190L, after)
+        if (closing) return
+        closing = true
+        animateMenuTo(0f, 190L) {
+            closing = false
+            after()
+        }
     }
 
     fun snapshot() = MotionSnapshot(menuProgress)

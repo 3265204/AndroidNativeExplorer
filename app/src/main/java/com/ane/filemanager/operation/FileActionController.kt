@@ -81,14 +81,14 @@ internal class FileActionController(
     fun rename() {
         val file = selectedFiles().singleOrNull() ?: return
         host.promptName(s(R.string.dialog_rename), file.name) { name ->
-            when (val result = files.rename(file, name)) {
-                is FileResult.Success -> {
-                    val renamed = result.value
-                    recordUndo(PendingUndo(run = { files.restorePath(renamed, file) }))
-                    replaceSelection(renamed)
-                    refresh()
-                }
-                is FileResult.Failure -> showProblem(result.problem)
+            val result = files.rename(file, name)
+            if (result is FileResult.Failure && result.problem.failure == FileFailure.NAME_EXISTS) {
+                host.resolveNameConflict(name,
+                    onReplace = { rename(file, name, RenameConflictPolicy.REPLACE) },
+                    onKeepBoth = { rename(file, name, RenameConflictPolicy.KEEP_BOTH) }
+                )
+            } else {
+                finishRename(result)
             }
         }
     }
@@ -114,6 +114,10 @@ internal class FileActionController(
             recordTransferUndo(records, true)
             exitMultiSelect()
         }
+    }
+
+    fun registerCreatedOutput(output: File) {
+        recordUndo(PendingUndo(run = { files.delete(listOf(output)) }))
     }
 
     fun undoLastOperation() {
@@ -169,6 +173,30 @@ internal class FileActionController(
 
     private fun recordTransferUndo(records: List<TransferRecord>, moved: Boolean) {
         if (records.isNotEmpty()) recordUndo(PendingUndo(run = { files.undoTransfer(records, moved) }))
+    }
+
+    private fun rename(file: File, name: String, policy: RenameConflictPolicy) {
+        performJob(
+            s(R.string.status_renaming),
+            { files.rename(file, name, policy, trashDirectory) }
+        ) { record -> applyRename(record) }
+    }
+
+    private fun finishRename(result: FileResult<RenameRecord>) {
+        when (result) {
+            is FileResult.Success -> {
+                applyRename(result.value)
+                refresh()
+            }
+            is FileResult.Failure -> showProblem(result.problem)
+        }
+    }
+
+    private fun applyRename(record: RenameRecord) {
+        if (record.original != record.result) {
+            recordUndo(PendingUndo(run = { files.undoRename(record) }))
+        }
+        replaceSelection(record.result)
     }
 
     private fun recordUndo(action: PendingUndo) {

@@ -17,4 +17,40 @@ android {
     buildFeatures {
         buildConfig true
     }
+
+    // Each plugin owns its Android values beside its implementation. They are merged only at build time.
+    sourceSets {
+        main.res.srcDirs += [
+            'src/main/java/com/ane/filemanager/plugin/archive/res',
+            'src/main/java/com/ane/filemanager/plugin/audio/res',
+            'src/main/java/com/ane/filemanager/plugin/image/res',
+            'src/main/java/com/ane/filemanager/plugin/text/res',
+            'src/main/java/com/ane/filemanager/plugin/video/res',
+            'src/main/java/com/ane/filemanager/pluginmanager/res'
+        ]
+        main.assets.srcDirs += [
+            'src/main/java/com/ane/filemanager/plugin/archive/assets',
+            'src/main/java/com/ane/filemanager/plugin/audio/assets',
+            'src/main/java/com/ane/filemanager/plugin/image/assets',
+            'src/main/java/com/ane/filemanager/plugin/text/assets',
+            'src/main/java/com/ane/filemanager/plugin/video/assets'
+        ]
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation project(':plugin-api')
+    implementation 'org.apache.commons:commons-compress:1.28.0'
+    implementation 'org.tukaani:xz:1.10'
+    implementation 'net.lingala.zip4j:zip4j:2.11.6'
+    implementation 'com.github.junrar:junrar:8.1.0'
+    runtimeOnly 'org.slf4j:slf4j-nop:2.0.17'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    testImplementation 'junit:junit:4.13.2'
 }

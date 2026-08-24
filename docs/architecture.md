@@ -2,7 +2,7 @@
 
 ## 总览
 
-项目是单 `app` 模块 Android 应用。主页面采用自定义绘制，不使用 XML 页面布局；查看器 Activity 使用 Kotlin 动态构建界面。
+项目包含 `app` 应用模块和独立的 `plugin-api` ABI 模块。主页面采用自定义绘制，不使用 XML 页面布局；插件界面使用 Kotlin 动态构建。
 
 ```text
 MainActivity
@@ -10,17 +10,20 @@ MainActivity
    ├─ ui/render                     绘制、命中区域、缩略图
    ├─ ui/menu                       菜单状态与命令组装
    ├─ ui/motion                     菜单动画、惯性和手势时序
+   ├─ ui/secondary                  二级页外壳、安全区和响应式宽度
    ├─ ui/selection                  选择、多选、双击和滑选
    ├─ ui/appearance                 主题和显示参数
    ├─ navigation                    标签、历史和持久化
    ├─ operation                     文件事务、错误和撤回
    └─ input                         鼠标与桌面快捷键解析
 
-ViewerRouter
-├─ viewer/image                     图片查看与缩放
-├─ viewer/video                     视频播放与目录切换
-├─ viewer/audio                     音频播放与目录切换
-└─ viewer/text                      文本编辑、编码与高亮
+pluginmanager                     只负责安装、发现、启停与调用边界
+├─ plugin-api                      独立、稳定的插件 ABI
+├─ plugin/archive/{代码,res}        归档解压、密码与自有文案
+├─ plugin/image/{代码,res}          图片查看、缩放与自有文案
+├─ plugin/video/{代码,res}          视频播放、目录切换与自有文案
+├─ plugin/audio/{代码,res}          音频播放、目录切换与自有文案
+└─ plugin/text/{代码,res}           文本编辑、编码、高亮与自有文案
 ```
 
 ## 入口与生命周期
@@ -55,6 +58,12 @@ ViewerRouter
 
 `FileSelectionController` 只维护选择集合及单击/双击/多选语义，不绘图也不直接修改文件。
 
+### 二级页面
+
+所有宿主全屏二级页面使用 `SecondaryPageScaffold`。它统一提供安全区、主题背景、页边距、返回区、标题与摘要、可用宽度变化和进退场；管理页面不得再次自行创建这套外壳。标签页、插件等功能仍各自拥有卡片、状态和操作，公共外壳不得引用具体业务类型。
+
+宿主设置统一进入 `ui/settings/SettingsDialog`，主菜单不直接修改外观状态。语言由 `AppLanguage` 持久化，显示参数由 `AppearanceController` 持久化；设置页只编排控件与刷新回调。字体、图标和行距使用有上下界的连续整数滑块，选择类设置使用应用自有主题弹层。
+
 ## 导航与持久化
 
 `DockSessionController` 维护：
@@ -64,9 +73,10 @@ ViewerRouter
 - 各标签的当前目录和返回历史。
 - 标签排序、固定、重命名和关闭。
 
-`DockSessionStore` 将会话写入 `SharedPreferences`。应用升级、进程被杀或重新启动后应恢复标签顺序、固定状态、活动目录和历史。
+`DockSessionStore` 将会话写入 `SharedPreferences`。固定标签会跨进程恢复；临时标签默认只属于当前会话，用户可以在标签页管理器中选择下次启动也恢复临时标签。
 
 “存储”是最左侧的默认固定标签。临时标签切换到其他标签后仍需保留，直到用户明确关闭或固定。
+长按任意 Dock 标签的菜单是标签页管理器的主要入口，左上角应用菜单保留同一入口作为兜底。管理器统一负责选择与进入、重命名、更改目录、固定、关闭、批量清理与启动恢复策略；更改目录时必须清空原标签的返回历史。
 
 ## 文件事务与撤回
 
@@ -80,20 +90,23 @@ ViewerRouter
 
 删除并非立即销毁：文件会移动到存储根目录下的 `.ane-filemanager-trash`。撤回记录保存在当前进程会话内，没有固定步数上限；重新启动应用时会清理旧回收内容，因此撤回不是跨进程持久化功能。
 
-## 内置查看器
+## 插件
 
-`ViewerRouter` 根据文件扩展名路由：
+文件管理核心不引用具体插件类。`pluginmanager/PluginRegistry` 扫描内置 assets 清单和应用私有目录中的导入清单，通过公共 `plugin-api` 实例化插件。管理层不包含格式判断、播放列表或插件界面；这些运行逻辑全部留在对应插件目录内。
 
-- 图片进入 `ImageViewerActivity`，支持双指缩放和左右切换。
-- 视频进入 `VideoViewerActivity`，支持同目录上一个/下一个。
-- 音频进入 `AudioViewerActivity`，支持播放列表和进度拖动。
+当前随应用提供的插件包括：
+
+- 图片进入 `image/ui/ImageActivity`，图片序列和缩放均由 image 插件负责。
+- 视频进入 `video/ui/VideoPlayerActivity`，同目录序列由 video 插件负责。
+- 音频进入 `audio/ui/AudioPlayerActivity`，播放列表和进度由 audio 插件负责。
 - 文本进入 `TextEditorActivity`，支持编码识别、保存、惯性滚动、缩进和代码高亮。
 
-所有查看器必须通过 `ViewerInsets` 适配状态栏、导航栏、刘海和 DeX 任务栏。
+各插件自行适配状态栏、导航栏、刘海和 DeX 任务栏，并在自己的 `res/values` 维护文案，不依赖 `plugin/shared` 一类公共界面层或宿主公共 values 池。
+
+协议字段、插件边界、返回结果和安全要求见 [插件开发规范](plugins.md)。
 
 ## 桌面输入
 
 `DesktopShortcutResolver` 只解析按键组合并返回语义化 `DesktopAction`。具体文件命令仍由主界面控制器执行。
 
 触屏长按、鼠标右键和键盘快捷键可以触发同一个业务命令，但平台事件解析必须保持分离。部分 DeX 设备一次右键会发送两个事件，兼容性去重集中定义在手势时序模块中。
-
