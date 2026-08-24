@@ -21,7 +21,21 @@ internal enum class FileFailure {
 
 internal data class FileProblem(val failure: FileFailure, val subject: String? = null)
 
-internal data class TransferRecord(val original: File, val result: File)
+internal data class TransferRecord(
+    val original: File,
+    val result: File,
+    val replaceOriginalOnUndo: Boolean = false
+)
+internal data class TransferBatch(val records: List<TransferRecord>, val skipped: Int = 0)
+internal data class TransferInterruption(
+    val completed: List<TransferRecord>,
+    val failed: File,
+    val remaining: List<File>,
+    val targetDirectory: File,
+    val moved: Boolean,
+    val skipped: Int,
+    val partialMove: TransferRecord? = null
+)
 internal data class TrashRecord(val original: File, val trashed: File)
 internal data class RenameRecord(
     val original: File,
@@ -33,7 +47,10 @@ internal enum class RenameConflictPolicy { FAIL, REPLACE, KEEP_BOTH }
 
 internal sealed interface FileResult<out T> {
     data class Success<T>(val value: T) : FileResult<T>
-    data class Failure(val problem: FileProblem) : FileResult<Nothing>
+    data class Failure(
+        val problem: FileProblem,
+        val transferInterruption: TransferInterruption? = null
+    ) : FileResult<Nothing>
 }
 
 /**
@@ -113,22 +130,107 @@ internal class FileOperationService {
         return FileResult.Success(Unit)
     }
 
-    fun transfer(sources: List<File>, targetDirectory: File, move: Boolean): FileResult<List<TransferRecord>> {
-        val records = mutableListOf<TransferRecord>()
-        sources.forEach { source ->
-            if (!source.exists()) return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, source.name))
+    fun transfer(
+        sources: List<File>,
+        targetDirectory: File,
+        move: Boolean,
+        completed: List<TransferRecord> = emptyList(),
+        skipped: Int = 0,
+        partialMove: TransferRecord? = null
+    ): FileResult<TransferBatch> {
+        val records = completed.toMutableList()
+        partialMove?.let { record ->
+            val problem = finishPartialMove(record)
+            if (problem != null) {
+                return interruptedTransfer(
+                    problem,
+                    records,
+                    record.original,
+                    sources,
+                    targetDirectory,
+                    move,
+                    skipped,
+                    record
+                )
+            }
+            records += record.copy(replaceOriginalOnUndo = false)
+        }
+        sources.forEachIndexed { index, source ->
+            if (!source.exists()) {
+                return interruptedTransfer(
+                    FileProblem(FileFailure.SOURCE_MISSING, source.name),
+                    records,
+                    source,
+                    sources.drop(index + 1),
+                    targetDirectory,
+                    move,
+                    skipped,
+                    null
+                )
+            }
+            var attemptedTarget: File? = null
             try {
-                if (move && source.parentFile?.canonicalFile == targetDirectory.canonicalFile) return@forEach
+                if (move && source.parentFile?.canonicalFile == targetDirectory.canonicalFile) return@forEachIndexed
                 val target = FileOps.availableTarget(targetDirectory, source.name)
+                attemptedTarget = target
                 if (move) FileOps.move(source, target) else FileOps.copy(source, target)
                 records += TransferRecord(source, target)
             } catch (error: FileOperationException) {
-                return FileResult.Failure(FileProblem(error.failure, error.subject ?: source.name))
+                val partialRecord = attemptedTarget
+                    ?.takeIf { error.failure == FileFailure.PARTIAL_MOVE && it.exists() }
+                    ?.let { TransferRecord(source, it, replaceOriginalOnUndo = true) }
+                return interruptedTransfer(
+                    FileProblem(error.failure, error.subject ?: source.name),
+                    records,
+                    source,
+                    sources.drop(index + 1),
+                    targetDirectory,
+                    move,
+                    skipped,
+                    partialRecord
+                )
             } catch (_: Exception) {
-                return FileResult.Failure(FileProblem(if (move) FileFailure.MOVE_FAILED else FileFailure.COPY_FAILED, source.name))
+                return interruptedTransfer(
+                    FileProblem(if (move) FileFailure.MOVE_FAILED else FileFailure.COPY_FAILED, source.name),
+                    records,
+                    source,
+                    sources.drop(index + 1),
+                    targetDirectory,
+                    move,
+                    skipped,
+                    null
+                )
             }
         }
-        return FileResult.Success(records)
+        return FileResult.Success(TransferBatch(records, skipped))
+    }
+
+    private fun interruptedTransfer(
+        problem: FileProblem,
+        completed: List<TransferRecord>,
+        failed: File,
+        remaining: List<File>,
+        targetDirectory: File,
+        moved: Boolean,
+        skipped: Int,
+        partialMove: TransferRecord?
+    ): FileResult.Failure {
+        return FileResult.Failure(
+            problem,
+            TransferInterruption(completed, failed, remaining, targetDirectory, moved, skipped, partialMove)
+        )
+    }
+
+    private fun finishPartialMove(record: TransferRecord): FileProblem? {
+        return try {
+            if (record.original.exists() && !FileOps.delete(record.original)) {
+                FileProblem(FileFailure.PARTIAL_MOVE, record.original.name)
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            FileProblem(FileFailure.PARTIAL_MOVE, record.original.name)
+        }
     }
 
     fun undoTransfer(records: List<TransferRecord>, moved: Boolean): FileResult<Unit> {
@@ -136,11 +238,16 @@ internal class FileOperationService {
             if (!record.result.exists()) {
                 return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, record.result.name))
             }
-            if (moved && record.original.exists()) {
+            if (moved && record.original.exists() && !record.replaceOriginalOnUndo) {
                 return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, record.original.name))
             }
             try {
-                if (moved) FileOps.move(record.result, record.original)
+                if (moved) {
+                    if (record.replaceOriginalOnUndo && record.original.exists() && !FileOps.delete(record.original)) {
+                        return FileResult.Failure(FileProblem(FileFailure.DELETE_FAILED, record.original.name))
+                    }
+                    FileOps.move(record.result, record.original)
+                }
                 else if (!FileOps.delete(record.result)) {
                     return FileResult.Failure(FileProblem(FileFailure.DELETE_FAILED, record.result.name))
                 }

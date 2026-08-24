@@ -62,4 +62,103 @@ class FileOperationServiceTest {
         assertEquals("source", source.readText())
         assertEquals("target", target.readText())
     }
+
+    @Test
+    fun `copy batch reports completed files and can skip a failed source`() {
+        val sourceDirectory = temporary.newFolder("copy-source")
+        val targetDirectory = temporary.newFolder("copy-target")
+        val first = File(sourceDirectory, "first.txt").apply { writeText("first") }
+        val missing = File(sourceDirectory, "missing.txt")
+
+        val result = service.transfer(listOf(first, missing), targetDirectory, move = false)
+
+        assertTrue(result is FileResult.Failure)
+        assertEquals(FileFailure.SOURCE_MISSING, (result as FileResult.Failure).problem.failure)
+        assertTrue(first.exists())
+        assertEquals("first", File(targetDirectory, first.name).readText())
+        val interruption = result.transferInterruption!!
+        assertEquals(listOf(first), interruption.completed.map(TransferRecord::original))
+
+        val resumed = service.transfer(
+            interruption.remaining,
+            interruption.targetDirectory,
+            interruption.moved,
+            interruption.completed,
+            interruption.skipped + 1
+        )
+
+        assertTrue(resumed is FileResult.Success)
+        val batch = (resumed as FileResult.Success).value
+        assertEquals(1, batch.records.size)
+        assertEquals(1, batch.skipped)
+    }
+
+    @Test
+    fun `move batch can retry a failed source without losing completed records`() {
+        val sourceDirectory = temporary.newFolder("move-source")
+        val targetDirectory = temporary.newFolder("move-target")
+        val first = File(sourceDirectory, "first.txt").apply { writeText("first") }
+        val missing = File(sourceDirectory, "missing.txt")
+
+        val result = service.transfer(listOf(first, missing), targetDirectory, move = true)
+
+        assertTrue(result is FileResult.Failure)
+        assertEquals(FileFailure.SOURCE_MISSING, (result as FileResult.Failure).problem.failure)
+        assertFalse(first.exists())
+        assertEquals("first", File(targetDirectory, first.name).readText())
+        val interruption = result.transferInterruption!!
+        missing.writeText("second")
+
+        val resumed = service.transfer(
+            listOf(interruption.failed) + interruption.remaining,
+            interruption.targetDirectory,
+            interruption.moved,
+            interruption.completed,
+            interruption.skipped
+        )
+
+        assertTrue(resumed is FileResult.Success)
+        val batch = (resumed as FileResult.Success).value
+        assertEquals(2, batch.records.size)
+        assertEquals(0, batch.skipped)
+        assertFalse(missing.exists())
+        assertEquals("second", File(targetDirectory, missing.name).readText())
+    }
+
+    @Test
+    fun `partial move retry only finishes deleting the source`() {
+        val sourceDirectory = temporary.newFolder("partial-retry-source")
+        val targetDirectory = temporary.newFolder("partial-retry-target")
+        val source = File(sourceDirectory, "item.txt").apply { writeText("source remainder") }
+        val target = File(targetDirectory, "item.txt").apply { writeText("complete target") }
+        val partial = TransferRecord(source, target, replaceOriginalOnUndo = true)
+
+        val result = service.transfer(
+            emptyList(),
+            targetDirectory,
+            move = true,
+            partialMove = partial
+        )
+
+        assertTrue(result is FileResult.Success)
+        val record = (result as FileResult.Success).value.records.single()
+        assertFalse(source.exists())
+        assertEquals("complete target", target.readText())
+        assertFalse(record.replaceOriginalOnUndo)
+    }
+
+    @Test
+    fun `undo skipped partial move replaces the incomplete original`() {
+        val sourceDirectory = temporary.newFolder("partial-undo-source")
+        val targetDirectory = temporary.newFolder("partial-undo-target")
+        val source = File(sourceDirectory, "item.txt").apply { writeText("incomplete") }
+        val target = File(targetDirectory, "item.txt").apply { writeText("complete") }
+        val partial = TransferRecord(source, target, replaceOriginalOnUndo = true)
+
+        val result = service.undoTransfer(listOf(partial), moved = true)
+
+        assertTrue(result is FileResult.Success)
+        assertEquals("complete", source.readText())
+        assertFalse(target.exists())
+    }
 }

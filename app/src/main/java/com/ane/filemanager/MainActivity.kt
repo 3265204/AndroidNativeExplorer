@@ -16,6 +16,8 @@ import android.webkit.MimeTypeMap
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.text.InputType
+import com.ane.filemanager.operation.FileProblem
+import com.ane.filemanager.operation.fileProblemMessage
 import com.ane.filemanager.provider.LocalFileProvider
 import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.ui.FileManagerView
@@ -167,6 +169,24 @@ class MainActivity : Activity() {
                 AneDialogAction(getString(R.string.dialog_keep_both), run = onKeepBoth),
                 AneDialogAction(getString(R.string.dialog_replace), primary = true, run = onReplace)
             ))
+    }
+
+    internal fun resolveTransferFailure(
+        problem: FileProblem,
+        onRetry: () -> Unit,
+        onSkip: () -> Unit,
+        onCancel: () -> Unit
+    ) {
+        AneDialog.message(
+            this,
+            getString(R.string.dialog_transfer_error_title),
+            getString(R.string.dialog_transfer_error_message, fileProblemMessage(problem)),
+            listOf(
+                AneDialogAction(getString(R.string.dialog_cancel), run = onCancel),
+                AneDialogAction(getString(R.string.dialog_skip), run = onSkip),
+                AneDialogAction(getString(R.string.dialog_retry), primary = true, run = onRetry)
+            )
+        )
     }
 
     fun openFile(file: File): Boolean {

@@ -54,12 +54,13 @@ internal class FileActionController(
             return
         }
         val moving = clipboardCut
-        performJob(
+        performTransfer(
             s(if (moving) R.string.status_moving else R.string.status_copying),
-            { files.transfer(sources, currentDirectory(), moving) }
-        ) { records ->
-            recordTransferUndo(records, moving)
-            if (moving) clipboard = emptyList()
+            sources,
+            currentDirectory(),
+            moving
+        ) { batch ->
+            if (moving && batch.skipped == 0) clipboard = emptyList()
         }
     }
 
@@ -110,8 +111,7 @@ internal class FileActionController(
 
     fun move(sources: List<File>, target: File) {
         if (sources.isEmpty()) return
-        performJob(s(R.string.status_moving_count, sources.size), { files.transfer(sources, target, true) }) { records ->
-            recordTransferUndo(records, true)
+        performTransfer(s(R.string.status_moving_count, sources.size), sources, target, moving = true) {
             exitMultiSelect()
         }
     }
@@ -159,6 +159,97 @@ internal class FileActionController(
             }
         }
         if (!accepted) setBusy(null)
+    }
+
+    private fun performTransfer(
+        label: String,
+        sources: List<File>,
+        targetDirectory: File,
+        moving: Boolean,
+        completed: List<TransferRecord> = emptyList(),
+        skipped: Int = 0,
+        partialMove: TransferRecord? = null,
+        onFinished: (TransferBatch) -> Unit = {}
+    ) {
+        if (closed.get()) return
+        setBusy(label)
+        val accepted = execute {
+            val result = files.transfer(sources, targetDirectory, moving, completed, skipped, partialMove)
+            if (closed.get()) return@execute
+            host.runOnUiThread {
+                if (closed.get()) return@runOnUiThread
+                setBusy(null)
+                refresh()
+                when (result) {
+                    is FileResult.Success -> finishTransfer(result.value, moving, onFinished)
+                    is FileResult.Failure -> {
+                        val interruption = result.transferInterruption
+                        if (interruption == null) {
+                            showProblem(result.problem)
+                        } else {
+                            val completedAfterSkip = interruption.completed + listOfNotNull(interruption.partialMove)
+                            host.resolveTransferFailure(
+                                problem = result.problem,
+                                onRetry = {
+                                    performTransfer(
+                                        label,
+                                        if (interruption.partialMove == null) {
+                                            listOf(interruption.failed) + interruption.remaining
+                                        } else {
+                                            interruption.remaining
+                                        },
+                                        interruption.targetDirectory,
+                                        interruption.moved,
+                                        interruption.completed,
+                                        interruption.skipped,
+                                        interruption.partialMove,
+                                        onFinished
+                                    )
+                                },
+                                onSkip = {
+                                    performTransfer(
+                                        label,
+                                        interruption.remaining,
+                                        interruption.targetDirectory,
+                                        interruption.moved,
+                                        completedAfterSkip,
+                                        interruption.skipped + 1,
+                                        null,
+                                        onFinished
+                                    )
+                                },
+                                onCancel = {
+                                    finishTransfer(
+                                        TransferBatch(completedAfterSkip, interruption.skipped + 1),
+                                        moving,
+                                        onFinished,
+                                        cancelled = true
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (!accepted) setBusy(null)
+    }
+
+    private fun finishTransfer(
+        batch: TransferBatch,
+        moved: Boolean,
+        onFinished: (TransferBatch) -> Unit,
+        cancelled: Boolean = false
+    ) {
+        recordTransferUndo(batch.records, moved)
+        onFinished(batch)
+        val message = when {
+            cancelled && batch.records.isNotEmpty() -> s(R.string.operation_cancelled_with_completed)
+            cancelled -> s(R.string.operation_cancelled)
+            batch.skipped > 0 -> s(R.string.operation_complete_with_skipped, batch.skipped)
+            else -> s(R.string.operation_complete)
+        }
+        host.toast(message)
     }
 
     private fun execute(task: () -> Unit): Boolean {

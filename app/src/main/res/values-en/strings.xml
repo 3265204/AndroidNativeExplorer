@@ -113,6 +113,10 @@
     <string name="dialog_name_conflict_message">“%1$s” already exists. Replace it or keep both items?</string>
     <string name="dialog_replace">Replace</string>
     <string name="dialog_keep_both">Keep both</string>
+    <string name="dialog_transfer_error_title">File operation needs attention</string>
+    <string name="dialog_transfer_error_message">%1$s\n\nRetry this item, skip it and continue, or cancel the remaining operation.</string>
+    <string name="dialog_retry">Retry</string>
+    <string name="dialog_skip">Skip</string>
     <string name="dialog_rename_tab">Rename tab</string>
     <string name="dialog_path_title">Enter file path</string>
     <string name="dialog_path_hint">Absolute path or path relative to the current folder</string>
@@ -131,6 +135,9 @@
     <string name="status_undoing">Undoing…</string>
     <string name="status_renaming">Renaming…</string>
     <string name="operation_complete">Done</string>
+    <string name="operation_complete_with_skipped">Done; skipped %1$d items</string>
+    <string name="operation_cancelled">Operation cancelled</string>
+    <string name="operation_cancelled_with_completed">Remaining operation cancelled; completed items can be undone</string>
     <string name="clipboard_set">%1$s %2$d items</string>
     <string name="verb_copy">Copied</string>
     <string name="verb_cut">Cut</string>

@@ -117,6 +117,10 @@
     <string name="dialog_name_conflict_message">“%1$s”已经存在。要替换原文件，还是同时保留两个文件？</string>
     <string name="dialog_replace">替换</string>
     <string name="dialog_keep_both">同时保留</string>
+    <string name="dialog_transfer_error_title">文件操作遇到问题</string>
+    <string name="dialog_transfer_error_message">%1$s\n\n可以重试当前项目、跳过并继续，或取消剩余操作。</string>
+    <string name="dialog_retry">重试</string>
+    <string name="dialog_skip">跳过</string>
     <string name="dialog_rename_tab">重命名标签</string>
     <string name="dialog_path_title">输入文件地址</string>
     <string name="dialog_path_hint">绝对路径或当前目录下的相对路径</string>
@@ -135,6 +139,9 @@
     <string name="status_undoing">正在撤回…</string>
     <string name="status_renaming">正在重命名…</string>
     <string name="operation_complete">操作完成</string>
+    <string name="operation_complete_with_skipped">操作完成，已跳过 %1$d 项</string>
+    <string name="operation_cancelled">操作已取消</string>
+    <string name="operation_cancelled_with_completed">已取消剩余操作，已完成的项目可撤回</string>
     <string name="clipboard_set">已%1$s %2$d 项</string>
     <string name="verb_copy">复制</string>
     <string name="verb_cut">剪切</string>

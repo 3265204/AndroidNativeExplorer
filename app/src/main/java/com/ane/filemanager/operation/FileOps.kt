@@ -40,23 +40,33 @@ object FileOps {
 
     @Throws(IOException::class)
     fun copy(source: File, target: File) {
-        if (source.isDirectory) {
-            if (isInside(target, source)) throw FileOperationException(FileFailure.COPY_INTO_SELF, source.name)
-            if (!target.exists() && !target.mkdirs()) throw FileOperationException(FileFailure.CREATE_DIRECTORY, target.name)
-            source.listFiles()?.forEach { copy(it, File(target, it.name)) }
-        } else {
-            target.parentFile?.let {
-                if (!it.exists() && !it.mkdirs()) throw FileOperationException(FileFailure.CREATE_DIRECTORY, it.name)
-            }
-            FileInputStream(source).channel.use { input ->
-                FileOutputStream(target).channel.use { output ->
-                    var pos = 0L
-                    while (pos < input.size()) {
-                        pos += input.transferTo(pos, minOf(16L * 1024 * 1024, input.size() - pos), output)
+        val targetExisted = target.exists()
+        try {
+            if (source.isDirectory) {
+                if (isInside(target, source)) throw FileOperationException(FileFailure.COPY_INTO_SELF, source.name)
+                if (!target.exists() && !target.mkdirs()) throw FileOperationException(FileFailure.CREATE_DIRECTORY, target.name)
+                val children = source.listFiles()
+                    ?: throw FileOperationException(FileFailure.COPY_FAILED, source.name)
+                children.forEach { copy(it, File(target, it.name)) }
+            } else {
+                target.parentFile?.let {
+                    if (!it.exists() && !it.mkdirs()) throw FileOperationException(FileFailure.CREATE_DIRECTORY, it.name)
+                }
+                FileInputStream(source).channel.use { input ->
+                    FileOutputStream(target).channel.use { output ->
+                        var pos = 0L
+                        while (pos < input.size()) {
+                            pos += input.transferTo(pos, minOf(16L * 1024 * 1024, input.size() - pos), output)
+                        }
                     }
                 }
+                target.setLastModified(source.lastModified())
             }
-            target.setLastModified(source.lastModified())
+        } catch (error: Exception) {
+            if (!targetExisted && target.exists()) {
+                FileOps.delete(target)
+            }
+            throw error
         }
     }
 

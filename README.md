@@ -6,7 +6,6 @@ ANE（Android Native Explorer）是使用 Kotlin 编写的 Android 本地文件�
 
 - 文件与文件夹浏览、创建、重命名、复制、剪切、粘贴、移动和删除。
 - ZIP、7z、RAR、TAR 及常见 gzip/bzip2/xz 文件可通过双击或长按菜单解压；加密归档会自动提示密码。
-- 支持应用内 ZIP 热插拔插件：可在左上角“管理插件”中从 ANE 当前文件夹导入、启停和卸载，并动态增加双击处理或长按菜单动作。
 - 会话内无限步撤回，删除内容暂存到隐藏回收目录，进程关闭后自动销毁。
 - 列表与网格布局、深浅色主题、缩略图和长文件名滚动显示。
 - 多选、滑动选择、长按拖动和标签栏拖动排序。
@@ -45,6 +44,7 @@ ANE（Android Native Explorer）是使用 Kotlin 编写的 Android 本地文件�
 
 `Esc` 不应当映射为应用动作，主要考虑到某些平板对 Esc 的特殊处理。
 
+因为插件的权限原因，请不要安装不信任的插件。
 
 
 ## 开发环境要求
@@ -53,7 +53,7 @@ ANE（Android Native Explorer）是使用 Kotlin 编写的 Android 本地文件�
 - Android Studio，或可用的命令行 Android SDK。
 - Android SDK Platform 36 和 Build Tools。
 - JDK 21（当前验证环境）；最低兼容版本以 Android Gradle Plugin 要求为准。
-- Gradle 9.4.1。
+- Gradle Wrapper 会自动下载 Gradle 9.4.1，无需全局安装 Gradle。
 - 调试设备需要 Android 6.0（API 23）或更高版本。
 
 项目当前构建配置：
@@ -71,8 +71,10 @@ ANE（Android Native Explorer）是使用 Kotlin 编写的 Android 本地文件�
 在项目根目录执行：
 
 ```powershell
-gradle :app:assembleDebug
+./gradlew :app:assembleDebug
 ```
+
+Windows PowerShell 使用 `./gradlew.bat :app:assembleDebug`。
 
 生成的 APK 位于：
 
@@ -105,6 +107,8 @@ adb -s 127.0.0.1:16384 shell am start -n com.ane.filemanager/.MainActivity
 1. [架构说明](docs/architecture.md)
 2. [开发规范](docs/development.md)
 3. [测试指南](docs/testing.md)
+
+请不要在该项目下添加非默认插件优化的pr，插件应作为另一个独立项目开发，该项目仅做为文件管理系统的开发使用。
 
 ## 碎碎念
 
