@@ -83,7 +83,70 @@ internal object ArchiveExtractor {
         }
     }
 
-    fun extract(file: File, password: CharArray? = null): ArchivePluginResult<File> {
+    fun list(file: File, password: CharArray? = null): ArchivePluginResult<List<ArchiveEntryInfo>> =
+        try {
+            listInternal(file, password)
+        } finally {
+            password?.fill('\u0000')
+        }
+
+    private fun listInternal(
+        file: File,
+        password: CharArray?
+    ): ArchivePluginResult<List<ArchiveEntryInfo>> {
+        val source = when (val resolved = ArchiveVolumeResolver.resolve(file)) {
+            is ArchivePluginResult.Success -> resolved.value
+            is ArchivePluginResult.Failure -> return resolved
+        }
+        val format = ArchiveFormat.forFile(source.primary)
+            ?: return failure(ArchivePluginError.UNSUPPORTED, source.primary.name)
+        return try {
+            val entries = when (format) {
+                ArchiveFormat.ZIP -> listZip(source.primary, password)
+                ArchiveFormat.RAR -> listRar(source.primary, password)
+                ArchiveFormat.SEVEN_Z -> listSevenZ(source, password)
+                ArchiveFormat.TAR -> listTar(FileInputStream(source.primary))
+                ArchiveFormat.TAR_GZIP -> listTar(gzip(source.primary))
+                ArchiveFormat.TAR_BZIP2 -> listTar(bzip2(source.primary))
+                ArchiveFormat.TAR_XZ -> listTar(xz(source.primary))
+                ArchiveFormat.GZIP, ArchiveFormat.BZIP2, ArchiveFormat.XZ -> listOf(
+                    ArchiveEntryInfo(source.outputName, directory = false)
+                )
+            }
+            ArchivePluginResult.Success(entries)
+        } catch (error: UnsafeArchiveEntryException) {
+            failure(ArchivePluginError.UNSAFE_ENTRY, error.entryName)
+        } catch (error: MissingNextVolumeException) {
+            failure(ArchivePluginError.MISSING_VOLUME, error.message ?: source.primary.name)
+        } catch (error: MissingPreviousVolumeException) {
+            failure(ArchivePluginError.MISSING_VOLUME, error.message ?: source.primary.name)
+        } catch (error: ZipException) {
+            if (error.type == ZipException.Type.WRONG_PASSWORD) passwordFailure(password, source.primary)
+            else failure(ArchivePluginError.CORRUPT, source.primary.name)
+        } catch (_: UnsupportedRarEncryptedException) {
+            passwordFailure(password, source.primary)
+        } catch (_: WrongPasswordException) {
+            passwordFailure(password, source.primary)
+        } catch (error: IOException) {
+            if (format == ArchiveFormat.SEVEN_Z && isSevenZPasswordFailure(error, password)) {
+                passwordFailure(password, source.primary)
+            } else failure(ArchivePluginError.CORRUPT, source.primary.name)
+        } catch (_: Exception) {
+            failure(ArchivePluginError.CORRUPT, source.primary.name)
+        }
+    }
+
+    fun extract(file: File, password: CharArray? = null): ArchivePluginResult<File> =
+        try {
+            extractInternal(file, password)
+        } finally {
+            password?.fill('\u0000')
+        }
+
+    private fun extractInternal(
+        file: File,
+        password: CharArray?
+    ): ArchivePluginResult<File> {
         val source = when (val resolved = ArchiveVolumeResolver.resolve(file)) {
             is ArchivePluginResult.Success -> resolved.value
             is ArchivePluginResult.Failure -> return resolved
@@ -143,8 +206,6 @@ internal object ArchiveExtractor {
         } catch (_: Exception) {
             delete(staging)
             failure(ArchivePluginError.EXTRACT_FAILED, source.primary.name)
-        } finally {
-            password?.fill('\u0000')
         }
     }
 
@@ -160,6 +221,69 @@ internal object ArchiveExtractor {
         }
         return false
     }
+
+    @Throws(ZipException::class, UnsafeArchiveEntryException::class)
+    private fun listZip(file: File, password: CharArray?): List<ArchiveEntryInfo> =
+        (if (password == null) ZipFile(file) else ZipFile(file, password)).use { archive ->
+            archive.fileHeaders.map { entry ->
+                if (entry.externalFileAttributes?.getOrNull(3)?.toInt()?.and(0x20) != 0) {
+                    throw UnsafeArchiveEntryException(entry.fileName)
+                }
+                ArchiveEntryInfo(
+                    path = safeDisplayPath(entry.fileName),
+                    directory = entry.isDirectory,
+                    size = entry.uncompressedSize.takeIf { it >= 0L && !entry.isDirectory }
+                )
+            }
+        }
+
+    @Throws(Exception::class)
+    private fun listRar(file: File, password: CharArray?): List<ArchiveEntryInfo> =
+        openRar(file, password).use { archive ->
+            archive.fileHeaders.map { entry ->
+                if (entry.redirection != null) throw UnsafeArchiveEntryException(entry.fileName)
+                ArchiveEntryInfo(
+                    path = safeDisplayPath(entry.fileName),
+                    directory = entry.isDirectory,
+                    size = entry.fullUnpackSize.takeIf { it >= 0L && !entry.isDirectory }
+                )
+            }
+        }
+
+    @Throws(IOException::class, UnsafeArchiveEntryException::class)
+    private fun listSevenZ(
+        source: ResolvedArchiveSource,
+        password: CharArray?
+    ): List<ArchiveEntryInfo> = openSevenZ(source, password).use { archive ->
+        buildList {
+            while (true) {
+                val entry = archive.nextEntry ?: break
+                add(ArchiveEntryInfo(
+                    path = safeDisplayPath(entry.name ?: throw IOException("Unnamed 7z entry")),
+                    directory = entry.isDirectory,
+                    size = entry.size.takeIf { it >= 0L && !entry.isDirectory }
+                ))
+            }
+        }
+    }
+
+    @Throws(IOException::class, UnsafeArchiveEntryException::class)
+    private fun listTar(input: InputStream): List<ArchiveEntryInfo> =
+        TarArchiveInputStream(BufferedInputStream(input)).use { archive ->
+            buildList {
+                while (true) {
+                    val entry = archive.nextEntry ?: break
+                    if (entry.isSymbolicLink || entry.isLink) {
+                        throw UnsafeArchiveEntryException(entry.name)
+                    }
+                    add(ArchiveEntryInfo(
+                        path = safeDisplayPath(entry.name),
+                        directory = entry.isDirectory,
+                        size = entry.size.takeIf { it >= 0L && !entry.isDirectory }
+                    ))
+                }
+            }
+        }
 
     @Throws(ZipException::class, UnsafeArchiveEntryException::class)
     private fun extractZip(file: File, output: File, password: CharArray?) {
@@ -282,6 +406,18 @@ internal object ArchiveExtractor {
             .setDecompressConcatenated(true)
             .setMemoryLimitKiB(MAX_ARCHIVE_MEMORY_KIB)
             .get()
+
+    @Throws(UnsafeArchiveEntryException::class)
+    private fun safeDisplayPath(entryName: String): String {
+        val slashed = entryName.replace('\\', '/')
+        val normalized = slashed.trim('/')
+        val parts = normalized.split('/').filter { it.isNotBlank() && it != "." }
+        if (normalized.isBlank() || slashed.startsWith('/') ||
+            Regex("^[A-Za-z]:").containsMatchIn(normalized) ||
+            parts.isEmpty() || parts.any { it == ".." }
+        ) throw UnsafeArchiveEntryException(entryName)
+        return parts.joinToString("/")
+    }
 
     @Throws(IOException::class, UnsafeArchiveEntryException::class)
     private fun safeTarget(root: File, entryName: String): File {

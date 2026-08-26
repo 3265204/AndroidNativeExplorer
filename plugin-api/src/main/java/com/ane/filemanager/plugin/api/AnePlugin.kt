@@ -4,7 +4,10 @@ import android.app.Activity
 import java.io.File
 
 object PluginApi {
-    const val VERSION = 2
+    const val VERSION = 3
+    const val MIN_SUPPORTED_VERSION = 2
+
+    fun supports(version: Int): Boolean = version in MIN_SUPPORTED_VERSION..VERSION
 }
 
 /** Stable API implemented by both bundled and imported in-process plugins. */
@@ -19,6 +22,20 @@ interface AnePlugin {
 /** Optional capability for actions that operate on the file manager's current selection. */
 interface PluginSelectionActionProvider {
     fun selectionActions(files: List<PluginFile>, host: PluginHost): List<PluginFileAction>
+}
+
+/** Optional capability for actions shown in the plus menu and scoped to the current directory. */
+interface PluginDirectoryActionProvider {
+    fun directoryActions(directory: PluginFile, host: PluginHost): List<PluginFileAction>
+}
+
+/** Optional visual hint. The plugin remains the owner of file-type recognition. */
+interface PluginFileIconProvider {
+    fun fileIcon(file: PluginFile): PluginFileIcon?
+}
+
+enum class PluginFileIcon {
+    ARCHIVE
 }
 
 data class PluginFile(
@@ -49,4 +66,38 @@ interface PluginHost {
     fun requestPassword(title: String, callback: (CharArray?) -> Unit)
     fun execute(label: String, task: () -> PluginTaskResult, callback: (PluginTaskResult) -> Unit = {})
     fun reportOutput(path: String, created: Boolean)
+    /** API v3: opens a real PTY owned by the host. Callbacks arrive on a background thread. */
+    fun openTerminal(
+        request: PluginTerminalRequest,
+        listener: PluginTerminalListener
+    ): PluginTerminalSession? = null
+}
+
+data class PluginTerminalRequest(
+    val executable: String = "/system/bin/sh",
+    val arguments: List<String> = emptyList(),
+    val workingDirectory: String,
+    val environment: Map<String, String> = emptyMap(),
+    val rows: Int = 24,
+    val columns: Int = 80
+)
+
+interface PluginTerminalListener {
+    fun onOutput(bytes: ByteArray)
+    fun onExit(exitCode: Int?, signal: Int?)
+    fun onError(message: String)
+}
+
+interface PluginTerminalSession : java.io.Closeable {
+    val isOpen: Boolean
+    fun write(bytes: ByteArray): Boolean
+    fun resize(rows: Int, columns: Int)
+    fun sendSignal(signal: Int): Boolean
+}
+
+object PluginTerminalSignal {
+    const val INTERRUPT = 2
+    const val QUIT = 3
+    const val TERMINATE = 15
+    const val WINDOW_CHANGED = 28
 }

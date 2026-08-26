@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_title">ANE Terminal</string>
+    <string name="terminal_summary">Interactive PTY terminal · app permissions · no root</string>
+    <string name="terminal_open_here">Open terminal here</string>
+    <string name="terminal_start_directory">Terminal start directory: %1$s</string>
+    <string name="terminal_close">Back to file manager</string>
+    <string name="terminal_paste">Paste</string>
+    <string name="terminal_shell_closed">The shell session ended</string>
+    <string name="terminal_unavailable">Could not start the PTY terminal</string>
+    <string name="terminal_api_upgrade_required">This plugin requires a newer ANE host with plugin API v3.</string>
+</resources>

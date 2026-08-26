@@ -5,12 +5,14 @@ ANE 使用普通 ZIP 作为应用内插件安装。用户先在 ANE 中进入 ZI
 ## 1. 边界与目录
 
 - 公共 ABI 位于独立 `plugin-api` 模块；安装、发现和启停位于 `pluginmanager`，不伪装成一个插件实现或运行层。
-- 内置插件位于同级的 `plugin/archive`、`plugin/text`、`plugin/audio`、`plugin/image`、`plugin/video`，不存在 `viewer` 总分类。
+- 内置插件分别位于 `plugin/archive`、`plugin/text`、`plugin/audio`、`plugin/image`、`plugin/video`、`plugin/terminal`。终端的独立 ZIP 工程只引用 `plugin/terminal` 这份源码，不维护第二份实现。不存在 `viewer` 总分类。
 - 每个插件自行拥有扩展名、MIME、文件签名探测、解析、密码、目录序列、界面和运行期资源。
 - `plugin` 下禁止建立 `shared`、`support`、`runtime` 或 `viewer` 总目录；插件之间不得共享文件类型总表或隐式运行层。
 - 新增内置插件只添加实现类和 `assets/ane-plugins/<id>.json`，不得编辑 `PluginRegistry` 中的类型列表。
 
-## 2. API v2
+## 2. API v3
+
+当前宿主 API 版本为 v3，并继续加载 `apiVersion: 2` 的旧插件。v3 新增宿主拥有的原生 PTY 会话；普通文件处理、长按动作和选区动作的接口保持兼容。
 
 插件入口必须是公开、无参构造的类，并实现：
 
@@ -49,9 +51,53 @@ class ArchivePlugin : AnePlugin, PluginSelectionActionProvider {
 }
 ```
 
-选区动作必须由插件动态返回；停用或卸载插件后会自动从加号菜单消失。宿主不得硬编码插件 ID、压缩格式或按钮文案。
+不依赖选区、而是作用于当前浏览目录的加号菜单动作，应实现 `PluginDirectoryActionProvider`。宿主无论当前是否有选区都会传入当前目录；这类动作不会出现在文件或文件夹的长按菜单：
+
+```kotlin
+class TerminalPlugin : AnePlugin, PluginDirectoryActionProvider {
+    override fun directoryActions(directory: PluginFile, host: PluginHost) = listOf(
+        PluginFileAction("terminal", "在此处打开终端") { /* 使用 directory.path */ }
+    )
+}
+```
+
+选区动作和当前目录动作都必须由插件动态返回；停用或卸载插件后会自动从加号菜单消失。宿主不得硬编码插件 ID、压缩格式或按钮文案。
+
+插件若需要专用文件图标，可额外实现 `PluginFileIconProvider`。文件类型仍由插件识别，例如压缩插件返回 `PluginFileIcon.ARCHIVE`；宿主只绘制对应的语义图标，不维护压缩扩展名列表。未被插件接管的文件统一交给 Android 外部应用路由。ANE 先统一显示“仅此一次 / 始终”：前者只用于当前打开操作，后者按 MIME 类型（未知 MIME 按扩展名）记住所选应用。文件长按菜单中的“选择打开方式”会再次显示相同模式，并允许覆盖原有关联。
 
 耗时任务必须交给 `host.execute`；密码通过 `host.requestPassword` 获取并在使用后清零；创建输出后通过任务结果或 `host.reportOutput` 刷新、选中并登记会话撤回。
+
+需要真正交互式终端的插件应声明 `apiVersion: 3`，通过 `PluginHost.openTerminal` 请求宿主 PTY：
+
+```kotlin
+val session = host.openTerminal(
+    PluginTerminalRequest(
+        executable = "/system/bin/sh",
+        arguments = listOf("-i"),
+        workingDirectory = file.path,
+        environment = mapOf("TERM" to "xterm-256color"),
+        rows = 24,
+        columns = 80
+    ),
+    object : PluginTerminalListener {
+        override fun onOutput(bytes: ByteArray) {
+            // 原始 PTY 字节，应交给 ANSI/VT 终端模拟器，不要按行拆成命令结果。
+        }
+
+        override fun onExit(exitCode: Int?, signal: Int?) = Unit
+        override fun onError(message: String) = Unit
+    }
+)
+
+session?.write("pwd\r".toByteArray())
+session?.resize(rows = 32, columns = 100)
+```
+
+`openTerminal` 返回持久的 `PluginTerminalSession`。输入是原始字节流，回车通常发送 `CR`（`0x0d`）；一次回车不会创建新进程，也不会产生“退出码 0”事件。只有 Shell 本身退出时才调用 `onExit`。终端窗口关闭或插件卸载时必须调用 `close()`。
+
+终端视图应从实际可用像素计算 PTY 的 `rows` 与 `columns`，并在窗口、横竖屏、软键盘或终端字号变化时调用 `resize`。宿主会通过 `TIOCSWINSZ` 更新内核 PTY；前台程序可收到 `SIGWINCH`，因此不应把终端固定为 80×24。
+
+PTY 进程仍以 ANE 应用 UID 运行，无需 Root，也不会突破 Android 沙箱。`Ctrl+C` 等终端控制键应优先写入控制字节，让终端行规程把信号送到前台进程组；`sendSignal` 用于 Agent 或生命周期层明确控制会话。
 
 ## 3. plugin.json
 
@@ -70,9 +116,10 @@ class ArchivePlugin : AnePlugin, PluginSelectionActionProvider {
       "description": "Demonstrates double-click handling and long-press actions"
     }
   },
-  "apiVersion": 2,
+  "apiVersion": 3,
   "entryClass": "example.demo.DemoPlugin",
   "priority": 100,
+  "defaultEnabled": true,
   "codeSha256": "classes.dex 的 64 位小写 SHA-256"
 }
 ```
@@ -81,7 +128,8 @@ class ArchivePlugin : AnePlugin, PluginSelectionActionProvider {
 - `description` 可选，最多 240 个字符，用于插件管理卡片；插件不应依赖它传递运行参数。
 - `defaultLocale` 建议填写根级名称和说明所用的 BCP-47 语言。这样当系统存在多个候选语言时，根级文本能在自己的语言优先级位置正确参与匹配。
 - `localizations` 可选，以任意 BCP-47 语言标签为键，为管理卡片提供本地化名称和说明；它不受 ANE 自身支持语言列表限制，未匹配时回退到插件作者定义的根级字段。
-- `apiVersion` 必须与当前 `PluginApi.VERSION` 完全一致。
+- `apiVersion` 必须位于宿主公开的支持范围内。当前宿主接受 v2–v3；使用 PTY 的插件必须填写 v3。
+- `defaultEnabled` 仅控制插件第一次出现时的初始状态，省略时为 `true`；之后以用户在插件管理中的选择为准。
 - `entryClass` 必须实现宿主提供的 `AnePlugin`；插件包不要重复打入 `plugin-api` 类。
 - `priority` 只影响双击接管顺序，不影响长按动作是否出现。
 - `codeSha256` 必须与包内 `classes.dex` 一致；先生成 Dex 和摘要，再写 manifest，最后打包。
@@ -102,7 +150,7 @@ demo-plugin.zip
 gradle :plugin-api:assembleRelease
 ```
 
-产物为 `plugin-api/build/outputs/aar/plugin-api-release.aar`。插件工程以 `compileOnly` 引用它，生成不包含 API 副本的 `classes.dex`。打包流程必须可复现，并在 Dex 生成后计算 SHA-256。禁止把原生库、资源 Activity 或第二个 APK 混入 v2 包；需要复杂界面时，可使用 `PluginHost.activity` 动态创建 Dialog/View。
+产物为 `plugin-api/build/outputs/aar/plugin-api-release.aar`。插件工程以 `compileOnly` 引用它，生成不包含 API 副本的 `classes.dex`。打包流程必须可复现，并在 Dex 生成后计算 SHA-256。插件 ZIP 仍只包含 manifest 与 Dex；原生 PTY 库由宿主 APK 提供，不需要也不允许插件重复携带。需要复杂界面时，可使用 `PluginHost.activity` 动态创建 Dialog/View。
 
 ## 5. 插件多语言规范
 
@@ -127,7 +175,7 @@ gradle :plugin-api:assembleRelease
 3. 将完整包复制到应用私有目录，并在写入代码前设为只读，以满足 Android 14+ 动态代码加载要求。
 4. 使用以宿主为 parent 的 `DexClassLoader` 创建实例并调用 `onLoad`。
 
-停用会调用 `onUnload` 并移除所有动作引用；重新启用会创建新实例。卸载只适用于导入插件，会在确认后删除其私有程序文件。内置插件可以停用但不能卸载。
+停用会调用 `onUnload` 并移除所有动作引用；重新启用会创建新实例。卸载只适用于导入插件，会在确认后删除其私有程序文件。内置插件可以停用但不能卸载。内置清单可声明 `defaultEnabled: false`，使插件首次出现时保持停用；用户显式启停后，其选择优先于清单默认值。内置插件不能被同 ID 的导入包替换。
 
 ## 7. 生命周期与安全
 

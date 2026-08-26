@@ -14,6 +14,11 @@
     <string name="empty_directory">This folder is empty</string>
     <string name="empty_directory_hint">Tap + at the bottom right to create a file or folder</string>
     <string name="no_viewer">No app can open this file type</string>
+    <string name="choose_file_app">Choose an app</string>
+    <string name="open_mode_title">Open mode</string>
+    <string name="open_mode_message">Choose how to open “%1$s”. Always remembers the app you select for this file type in ANE.</string>
+    <string name="open_mode_once">Just once</string>
+    <string name="open_mode_always">Always</string>
     <string name="file_manager_description">Local file manager</string>
     <string name="sort_symbol" translatable="false">⇅</string>
     <string name="folder_detail">Folder  ·  %1$s</string>
@@ -35,6 +40,7 @@
     <string name="action_exit_multi_select">Exit multi-select</string>
     <string name="action_rename">Rename</string>
     <string name="action_delete">Delete</string>
+    <string name="action_choose_file_app">Open with…</string>
     <string name="action_close_tab">Close tab</string>
     <string name="action_pin">Pin</string>
     <string name="action_unpin">Unpin</string>

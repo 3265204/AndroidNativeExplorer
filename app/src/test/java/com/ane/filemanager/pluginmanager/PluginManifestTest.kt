@@ -1,6 +1,9 @@
 package com.ane.filemanager.pluginmanager
 
+import com.ane.filemanager.plugin.api.PluginApi
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PluginManifestTest {
@@ -8,6 +11,14 @@ class PluginManifestTest {
         "en" to PluginLocalization("Demo plugin", "English description"),
         "fr" to PluginLocalization("Extension de démonstration", "Description française")
     )
+
+    @Test
+    fun apiV3HostKeepsV2CompatibilityButRejectsOutsideRange() {
+        assertFalse(PluginApi.supports(1))
+        assertTrue(PluginApi.supports(2))
+        assertTrue(PluginApi.supports(3))
+        assertFalse(PluginApi.supports(4))
+    }
 
     @Test
     fun selectsBaseLanguageTranslationForRegionalLocale() {

@@ -9,10 +9,17 @@ import com.ane.filemanager.ui.dialog.AneDialog
 import com.ane.filemanager.plugin.api.AnePlugin
 import com.ane.filemanager.plugin.api.PluginFile
 import com.ane.filemanager.plugin.api.PluginFileAction
+import com.ane.filemanager.plugin.api.PluginFileIcon
+import com.ane.filemanager.plugin.api.PluginFileIconProvider
 import com.ane.filemanager.plugin.api.PluginHost
 import com.ane.filemanager.plugin.api.PluginApi
+import com.ane.filemanager.plugin.api.PluginDirectoryActionProvider
 import com.ane.filemanager.plugin.api.PluginSelectionActionProvider
 import com.ane.filemanager.plugin.api.PluginTaskResult
+import com.ane.filemanager.plugin.api.PluginTerminalListener
+import com.ane.filemanager.plugin.api.PluginTerminalRequest
+import com.ane.filemanager.plugin.api.PluginTerminalSession
+import com.ane.filemanager.pluginmanager.pty.HostPtyTerminalSession
 import dalvik.system.DexClassLoader
 import java.io.File
 import java.util.concurrent.Executors
@@ -91,6 +98,11 @@ internal class PluginRegistry(
         override fun reportOutput(path: String, created: Boolean) {
             reportOutput(File(path), created)
         }
+
+        override fun openTerminal(
+            request: PluginTerminalRequest,
+            listener: PluginTerminalListener
+        ): PluginTerminalSession? = HostPtyTerminalSession.open(request, listener)
     }
 
     init { reload() }
@@ -132,14 +144,47 @@ internal class PluginRegistry(
         }
     }
 
+    fun directoryActions(directory: File): List<PluginAction> {
+        val pluginDirectory = directory.asPluginFile()
+        return records.flatMap { record ->
+            val provider = record.instance as? PluginDirectoryActionProvider
+                ?: return@flatMap emptyList()
+            runCatching { provider.directoryActions(pluginDirectory, pluginHost) }
+                .getOrElse {
+                    activity.toast(activity.getString(R.string.plugin_runtime_error, record.descriptor.name))
+                    emptyList()
+                }.map { action -> action.guarded(record) }
+        }
+    }
+
+    fun fileIcon(file: File): PluginFileIcon? {
+        val pluginFile = file.asPluginFile()
+        records.forEach { record ->
+            if (record.instance == null) return@forEach
+            val provider = record.instance as? PluginFileIconProvider ?: return@forEach
+            runCatching { provider.fileIcon(pluginFile) }.getOrNull()?.let { return it }
+        }
+        return null
+    }
+
     fun managerEntries(): List<PluginManagerEntry> = records.map {
-        PluginManagerEntry(it.descriptor, isEnabled(it.descriptor.id), it.error)
+        PluginManagerEntry(it.descriptor, isEnabled(it.descriptor), it.error)
     }
 
     fun setEnabled(id: String, enabled: Boolean) {
         val disabled = disabledIds().toMutableSet()
-        if (enabled) disabled.remove(id) else disabled.add(id)
-        preferences.edit().putStringSet(DISABLED_IDS, disabled).apply()
+        val explicitlyEnabled = explicitlyEnabledIds().toMutableSet()
+        if (enabled) {
+            disabled.remove(id)
+            explicitlyEnabled.add(id)
+        } else {
+            disabled.add(id)
+            explicitlyEnabled.remove(id)
+        }
+        preferences.edit()
+            .putStringSet(DISABLED_IDS, disabled)
+            .putStringSet(ENABLED_IDS, explicitlyEnabled)
+            .apply()
         reload()
     }
 
@@ -161,7 +206,11 @@ internal class PluginRegistry(
         runCatching { installer.remove(id) }
             .onFailure { activity.toast(it.userMessage()) }
         val disabled = disabledIds().toMutableSet().apply { remove(id) }
-        preferences.edit().putStringSet(DISABLED_IDS, disabled).apply()
+        val explicitlyEnabled = explicitlyEnabledIds().toMutableSet().apply { remove(id) }
+        preferences.edit()
+            .putStringSet(DISABLED_IDS, disabled)
+            .putStringSet(ENABLED_IDS, explicitlyEnabled)
+            .apply()
         reload()
     }
 
@@ -175,13 +224,17 @@ internal class PluginRegistry(
     private fun reload() {
         unloadAll()
         val imported = installer.installed().associateBy { it.descriptor.id }
-        val descriptors = bundledDescriptors().associateBy(PluginDescriptor::id).toMutableMap()
-        imported.forEach { (id, packageInfo) -> descriptors[id] = packageInfo.descriptor }
+        val bundled = bundledDescriptors().associateBy(PluginDescriptor::id)
+        val descriptors = imported.mapValues { it.value.descriptor }.toMutableMap()
+        bundled.forEach { (id, descriptor) -> descriptors[id] = descriptor }
         records = descriptors.values.map { descriptor ->
-            PluginRecord(descriptor, imported[descriptor.id]?.codeFile)
+            PluginRecord(
+                descriptor,
+                imported[descriptor.id]?.codeFile?.takeIf { descriptor.source == PluginSource.IMPORTED }
+            )
         }.sortedWith(compareByDescending<PluginRecord> { it.descriptor.priority }
             .thenBy { it.descriptor.name.lowercase() })
-        records.filter { isEnabled(it.descriptor.id) }.forEach(::load)
+        records.filter { isEnabled(it.descriptor) }.forEach(::load)
     }
 
     private fun bundledDescriptors(): List<PluginDescriptor> = activity.assets.list(BUNDLED_MANIFESTS)
@@ -194,7 +247,7 @@ internal class PluginRegistry(
                     )
                 }
             }.getOrNull()
-        }.filter { it.apiVersion == PluginApi.VERSION }
+        }.filter { PluginApi.supports(it.apiVersion) }
 
     private fun load(record: PluginRecord) {
         runCatching {
@@ -234,8 +287,15 @@ internal class PluginRegistry(
         return PluginFile(absolutePath, name, extension, mime)
     }
 
-    private fun isEnabled(id: String) = id !in disabledIds()
+    private fun isEnabled(descriptor: PluginDescriptor): Boolean = resolvePluginEnabled(
+        descriptor.id,
+        descriptor.defaultEnabled,
+        disabledIds(),
+        explicitlyEnabledIds()
+    )
     private fun disabledIds(): Set<String> = preferences.getStringSet(DISABLED_IDS, emptySet()).orEmpty()
+    private fun explicitlyEnabledIds(): Set<String> =
+        preferences.getStringSet(ENABLED_IDS, emptySet()).orEmpty()
 
     private fun Throwable.userMessage(): String = if (this is PluginProblem) {
         activity.getString(messageResource, *formatValues)
@@ -246,5 +306,6 @@ internal class PluginRegistry(
     companion object {
         private const val BUNDLED_MANIFESTS = "ane-plugins"
         private const val DISABLED_IDS = "disabled-plugin-ids"
+        private const val ENABLED_IDS = "enabled-plugin-ids"
     }
 }

@@ -1,5 +1,7 @@
 package com.ane.filemanager.plugin.archive
 
+import com.ane.filemanager.plugin.api.PluginFile
+import com.ane.filemanager.plugin.api.PluginFileIcon
 import net.lingala.zip4j.ZipFile
 import net.lingala.zip4j.model.ZipParameters
 import net.lingala.zip4j.model.enums.EncryptionMethod
@@ -20,6 +22,16 @@ class ArchivePluginTest {
     val temporary = TemporaryFolder()
 
     @Test
+    fun `archive plugin owns the compressed-file visual hint`() {
+        val plugin = ArchivePluginEntry()
+        val archive = PluginFile("/tmp/files.7z.001", "files.7z.001", "001", "*/*")
+        val ordinary = PluginFile("/tmp/note.txt", "note.txt", "txt", "text/plain")
+
+        assertEquals(PluginFileIcon.ARCHIVE, plugin.fileIcon(archive))
+        assertEquals(null, plugin.fileIcon(ordinary))
+    }
+
+    @Test
     fun `zip extracts into available sibling folder`() {
         val archive = temporary.newFile("sample.zip")
         writeZip(archive, "folder/hello.txt" to "hello")
@@ -34,6 +46,27 @@ class ArchivePluginTest {
     }
 
     @Test
+    fun `zip listing preserves paths for hierarchical browsing`() {
+        val archive = temporary.newFile("listing.zip")
+        writeZip(
+            archive,
+            "docs/manual/readme.txt" to "manual",
+            "docs/license.txt" to "license",
+            "root.txt" to "root"
+        )
+
+        val result = ArchiveExtractor.list(archive)
+
+        assertTrue(result is ArchivePluginResult.Success)
+        result as ArchivePluginResult.Success
+        assertEquals(
+            listOf("docs/manual/readme.txt", "docs/license.txt", "root.txt"),
+            result.value.map { it.path }
+        )
+        assertEquals(listOf(6L, 7L, 4L), result.value.map { it.size })
+    }
+
+    @Test
     fun `zip traversal is rejected without partial output`() {
         val archive = temporary.newFile("unsafe.zip")
         writeZip(archive, "../escaped.txt" to "nope")
@@ -45,6 +78,17 @@ class ArchivePluginTest {
         assertFalse(File(temporary.root, "escaped.txt").exists())
         assertFalse(File(temporary.root, "unsafe").exists())
         assertTrue(temporary.root.listFiles().orEmpty().none { ".extract-" in it.name })
+    }
+
+    @Test
+    fun `zip traversal is also rejected while browsing`() {
+        val archive = temporary.newFile("unsafe-list.zip")
+        writeZip(archive, "../escaped.txt" to "nope")
+
+        val result = ArchiveExtractor.list(archive)
+
+        assertTrue(result is ArchivePluginResult.Failure)
+        assertEquals(ArchivePluginError.UNSAFE_ENTRY, (result as ArchivePluginResult.Failure).error)
     }
 
     @Test

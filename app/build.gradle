@@ -5,6 +5,7 @@ plugins {
 android {
     namespace 'com.ane.filemanager'
     compileSdk 36
+    ndkVersion '29.0.14206865'
 
     defaultConfig {
         applicationId 'com.ane.filemanager'
@@ -12,6 +13,15 @@ android {
         targetSdk 35
         versionCode 1
         versionName '0.1.0'
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+        }
+    }
+
+    externalNativeBuild {
+        ndkBuild {
+            path 'src/main/cpp/Android.mk'
+        }
     }
 
     buildFeatures {
@@ -25,6 +35,7 @@ android {
             'src/main/java/com/ane/filemanager/plugin/audio/res',
             'src/main/java/com/ane/filemanager/plugin/image/res',
             'src/main/java/com/ane/filemanager/plugin/text/res',
+            'src/main/java/com/ane/filemanager/plugin/terminal/res',
             'src/main/java/com/ane/filemanager/plugin/video/res',
             'src/main/java/com/ane/filemanager/pluginmanager/res'
         ]
@@ -33,7 +44,8 @@ android {
             'src/main/java/com/ane/filemanager/plugin/audio/assets',
             'src/main/java/com/ane/filemanager/plugin/image/assets',
             'src/main/java/com/ane/filemanager/plugin/text/assets',
-            'src/main/java/com/ane/filemanager/plugin/video/assets'
+            'src/main/java/com/ane/filemanager/plugin/video/assets',
+            'src/main/java/com/ane/filemanager/plugin/terminal/assets'
         ]
     }
 

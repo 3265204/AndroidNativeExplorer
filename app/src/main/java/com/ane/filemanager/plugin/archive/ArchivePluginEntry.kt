@@ -1,9 +1,12 @@
 package com.ane.filemanager.plugin.archive
 
+import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
 import com.ane.filemanager.plugin.api.AnePlugin
 import com.ane.filemanager.plugin.api.PluginFile
 import com.ane.filemanager.plugin.api.PluginFileAction
+import com.ane.filemanager.plugin.api.PluginFileIcon
+import com.ane.filemanager.plugin.api.PluginFileIconProvider
 import com.ane.filemanager.plugin.api.PluginHost
 import com.ane.filemanager.plugin.api.PluginSelectionActionProvider
 import com.ane.filemanager.plugin.api.PluginTaskResult
@@ -11,16 +14,24 @@ import com.ane.filemanager.ui.dialog.AneDialog
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
-class ArchivePluginEntry : AnePlugin, PluginSelectionActionProvider {
+class ArchivePluginEntry : AnePlugin, PluginSelectionActionProvider, PluginFileIconProvider {
     override fun supports(file: PluginFile) = ArchiveVolumeResolver.matchesName(file.name)
 
+    override fun fileIcon(file: PluginFile): PluginFileIcon? =
+        PluginFileIcon.ARCHIVE.takeIf { supports(file) }
+
     override fun open(file: PluginFile, host: PluginHost): Boolean {
-        begin(file.toFile(), host)
+        browse(file.toFile(), null, host)
         return true
     }
 
     override fun fileActions(file: PluginFile, host: PluginHost) = listOf(
-        PluginFileAction("extract", host.activity.getString(R.string.archive_action_extract)) { begin(file.toFile(), host) }
+        PluginFileAction("browse", host.activity.getString(R.string.archive_action_browse)) {
+            browse(file.toFile(), null, host)
+        },
+        PluginFileAction("extract", host.activity.getString(R.string.archive_action_extract)) {
+            beginExtract(file.toFile(), host)
+        }
     )
 
     override fun selectionActions(files: List<PluginFile>, host: PluginHost): List<PluginFileAction> {
@@ -70,7 +81,43 @@ class ArchivePluginEntry : AnePlugin, PluginSelectionActionProvider {
         }
     }
 
-    private fun begin(source: File, host: PluginHost) {
+    private fun browse(source: File, password: CharArray?, host: PluginHost) {
+        val entries = AtomicReference<List<ArchiveEntryInfo>?>()
+        val error = AtomicReference<ArchivePluginError?>()
+        host.execute(host.activity.getString(R.string.archive_status_reading), {
+            when (val result = ArchiveExtractor.list(source, password)) {
+                is ArchivePluginResult.Success -> {
+                    entries.set(result.value)
+                    PluginTaskResult(true)
+                }
+                is ArchivePluginResult.Failure -> {
+                    error.set(result.error)
+                    if (result.error in setOf(
+                            ArchivePluginError.PASSWORD_REQUIRED,
+                            ArchivePluginError.WRONG_PASSWORD
+                        )) PluginTaskResult(false) else result.asTask(host)
+                }
+            }
+        }) { result ->
+            if (result.success) {
+                val activity = host.activity as? MainActivity ?: return@execute
+                ArchiveBrowserDialog(activity, source, entries.get().orEmpty()) {
+                    beginExtract(source, host)
+                }.show()
+            } else if (error.get() in setOf(
+                    ArchivePluginError.PASSWORD_REQUIRED,
+                    ArchivePluginError.WRONG_PASSWORD
+                )) {
+                host.requestPassword(
+                    host.activity.getString(R.string.archive_password_title, source.name)
+                ) { nextPassword ->
+                    if (nextPassword != null) browse(source, nextPassword, host)
+                }
+            }
+        }
+    }
+
+    private fun beginExtract(source: File, host: PluginHost) {
         val inspection = AtomicReference<ArchiveInspection?>()
         host.execute(host.activity.getString(R.string.archive_status_checking), {
             when (val result = ArchiveExtractor.inspect(source)) {

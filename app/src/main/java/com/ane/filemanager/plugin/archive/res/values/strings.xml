@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="archive_action_extract">解压</string>
+    <string name="archive_action_browse">浏览压缩包</string>
     <string name="archive_action_compress">添加到压缩包</string>
     <string name="archive_choose_format">选择压缩格式</string>
     <string name="archive_format_zip">ZIP</string>
@@ -15,6 +16,7 @@
     <string name="archive_password_title">“%1$s”需要密码</string>
     <string name="archive_status_extracting">正在解压…</string>
     <string name="archive_status_checking">正在检查压缩文件…</string>
+    <string name="archive_status_reading">正在读取压缩包目录…</string>
     <string name="archive_operation_complete">解压完成</string>
     <string name="archive_error_source_missing">压缩文件已不存在</string>
     <string name="archive_error_unsupported">暂不支持解压此类型文件</string>
@@ -26,4 +28,19 @@
     <string name="archive_error_name_exists">同名解压目录已存在</string>
     <string name="archive_error_extract_failed">无法解压“%1$s”，请检查文件和目录权限</string>
     <string name="archive_error_missing_volume">缺少分卷“%1$s”，请将完整分卷放在同一文件夹</string>
+    <string name="archive_browser_close">关闭压缩包</string>
+    <string name="archive_browser_root">压缩包</string>
+    <string name="archive_browser_parent">返回上一级</string>
+    <string name="archive_browser_parent_detail">查看父目录</string>
+    <string name="archive_browser_empty">这个目录是空的</string>
+    <string name="archive_browser_folder_badge">DIR</string>
+    <string name="archive_browser_file_badge">文件</string>
+    <string name="archive_browser_unknown_size">大小未知</string>
+    <string name="archive_extract_all">全部解压</string>
+    <plurals name="archive_browser_folder_items">
+        <item quantity="other">%d 项</item>
+    </plurals>
+    <plurals name="archive_browser_summary">
+        <item quantity="other">%1$s · %2$d 项</item>
+    </plurals>
 </resources>

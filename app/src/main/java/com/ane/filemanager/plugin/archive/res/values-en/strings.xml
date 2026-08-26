@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="archive_action_extract">Extract</string>
+    <string name="archive_action_browse">Browse archive</string>
     <string name="archive_action_compress">Add to archive</string>
     <string name="archive_choose_format">Choose archive format</string>
     <string name="archive_format_zip">ZIP</string>
@@ -15,6 +16,7 @@
     <string name="archive_password_title">“%1$s” requires a password</string>
     <string name="archive_status_extracting">Extracting…</string>
     <string name="archive_status_checking">Checking archive…</string>
+    <string name="archive_status_reading">Reading archive folders…</string>
     <string name="archive_operation_complete">Extraction complete</string>
     <string name="archive_error_source_missing">The archive no longer exists</string>
     <string name="archive_error_unsupported">This archive type is not supported</string>
@@ -26,4 +28,21 @@
     <string name="archive_error_name_exists">An extraction folder with that name already exists</string>
     <string name="archive_error_extract_failed">Could not extract “%1$s”; check file and folder permissions</string>
     <string name="archive_error_missing_volume">Volume “%1$s” is missing; place every volume in the same folder</string>
+    <string name="archive_browser_close">Close archive</string>
+    <string name="archive_browser_root">Archive</string>
+    <string name="archive_browser_parent">Up one level</string>
+    <string name="archive_browser_parent_detail">View parent folder</string>
+    <string name="archive_browser_empty">This folder is empty</string>
+    <string name="archive_browser_folder_badge">DIR</string>
+    <string name="archive_browser_file_badge">FILE</string>
+    <string name="archive_browser_unknown_size">Unknown size</string>
+    <string name="archive_extract_all">Extract all</string>
+    <plurals name="archive_browser_folder_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+    <plurals name="archive_browser_summary">
+        <item quantity="one">%1$s · %2$d item</item>
+        <item quantity="other">%1$s · %2$d items</item>
+    </plurals>
 </resources>

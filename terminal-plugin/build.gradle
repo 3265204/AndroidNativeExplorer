@@ -1,0 +1,153 @@
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+
+plugins {
+    id 'com.android.library' version '9.2.1'
+}
+
+group = 'com.ane.plugins'
+version = '0.3.4'
+
+android {
+    namespace 'com.ane.filemanager'
+    compileSdk 36
+
+    sourceSets {
+        main.kotlin.srcDirs = [
+            '../app/src/main/java/com/ane/filemanager/plugin/terminal'
+        ]
+        main.res.srcDirs = [
+            '../app/src/main/java/com/ane/filemanager/plugin/terminal/res'
+        ]
+    }
+
+    defaultConfig {
+        minSdk 23
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+def pluginApiAar = file('../plugin-api/build/outputs/aar/plugin-api-release.aar')
+
+dependencies {
+    compileOnly files(pluginApiAar)
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.named('preBuild').configure {
+    doFirst {
+        if (!pluginApiAar.isFile()) {
+            throw new GradleException(
+                'Missing plugin-api AAR. Run ../gradlew :plugin-api:assembleRelease first.'
+            )
+        }
+    }
+}
+
+def preparedJar = layout.buildDirectory.file('plugin-package/input/classes.jar')
+def pluginApiJar = layout.buildDirectory.file('plugin-package/classpath/plugin-api.jar')
+def dexDirectory = layout.buildDirectory.dir('plugin-package/dex')
+def generatedManifest = layout.buildDirectory.file('plugin-package/plugin.json')
+
+tasks.register('preparePluginJar', Copy) {
+    dependsOn 'bundleReleaseAar'
+    from({ zipTree(layout.buildDirectory.file('outputs/aar/ane-terminal-plugin-release.aar').get().asFile) }) {
+        include 'classes.jar'
+    }
+    into preparedJar.get().asFile.parentFile
+}
+
+tasks.register('preparePluginClasspath', Copy) {
+    dependsOn 'preBuild'
+    from({ zipTree(pluginApiAar) }) {
+        include 'classes.jar'
+        rename { 'plugin-api.jar' }
+    }
+    into pluginApiJar.get().asFile.parentFile
+}
+
+tasks.register('dexPlugin', Exec) {
+    dependsOn 'preparePluginJar', 'preparePluginClasspath'
+    inputs.file(preparedJar)
+    inputs.file(pluginApiJar)
+    inputs.files(configurations.releaseCompileClasspath)
+    outputs.file(dexDirectory.map { it.file('classes.dex') })
+
+    doFirst {
+        delete dexDirectory
+        dexDirectory.get().asFile.mkdirs()
+        def sdkRoot = System.getenv('ANDROID_HOME') ?: System.getenv('ANDROID_SDK_ROOT')
+        if (!sdkRoot) throw new GradleException('ANDROID_HOME or ANDROID_SDK_ROOT is required.')
+        def buildToolsRoot = file("${sdkRoot}/build-tools")
+        def d8 = buildToolsRoot.listFiles()
+            ?.findAll { it.isDirectory() && new File(it, 'd8').isFile() }
+            ?.sort { a, b -> b.name <=> a.name }
+            ?.first()
+            ?.toPath()
+            ?.resolve('d8')
+            ?.toFile()
+        if (d8 == null) throw new GradleException("No d8 executable found under ${buildToolsRoot}.")
+        def androidJar = file("${sdkRoot}/platforms/android-36/android.jar")
+        if (!androidJar.isFile()) throw new GradleException("Missing Android platform library: ${androidJar}")
+        def command = [
+            d8.absolutePath,
+            '--min-api', '23',
+            '--release',
+            '--lib', androidJar.absolutePath,
+            '--output', dexDirectory.get().asFile.absolutePath
+        ]
+        def compileJars = configurations.releaseCompileClasspath.files.findAll {
+            it.isDirectory() || it.name.endsWith('.jar')
+        }
+        ([pluginApiJar.get().asFile] + compileJars).each {
+            command += ['--classpath', it.absolutePath]
+        }
+        command += preparedJar.get().asFile.absolutePath
+        commandLine command
+    }
+}
+
+tasks.register('writePluginManifest') {
+    dependsOn 'dexPlugin'
+    inputs.file(dexDirectory.map { it.file('classes.dex') })
+    outputs.file(generatedManifest)
+
+    doLast {
+        def dex = dexDirectory.get().file('classes.dex').asFile
+        def digest = MessageDigest.getInstance('SHA-256').digest(dex.bytes).encodeHex().toString()
+        def manifest = [
+            id: 'ane.terminal',
+            name: '终端',
+            version: project.version.toString(),
+            description: '在所选位置启动无需 Root 的原生 PTY 终端，支持 ANSI/VT 交互程序并为后续 Agent 提供持久会话。',
+            defaultLocale: 'zh',
+            localizations: [
+                en: [
+                    name: 'Terminal',
+                    description: 'Start a persistent native PTY terminal with ANSI/VT support for interactive tools and future agents.'
+                ]
+            ],
+            apiVersion: 3,
+            entryClass: 'com.ane.filemanager.plugin.terminal.TerminalPluginEntry',
+            priority: 10,
+            codeSha256: digest
+        ]
+        generatedManifest.get().asFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + '\n'
+    }
+}
+
+tasks.register('packagePlugin', Zip) {
+    dependsOn 'writePluginManifest'
+    archiveFileName = "ane-terminal-${project.version}.zip"
+    destinationDirectory = layout.buildDirectory.dir('dist')
+    from(generatedManifest) { rename { 'plugin.json' } }
+    from(dexDirectory.map { it.file('classes.dex') })
+}

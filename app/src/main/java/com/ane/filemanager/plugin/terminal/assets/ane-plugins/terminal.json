@@ -1,0 +1,17 @@
+{
+  "id": "ane.terminal",
+  "name": "终端",
+  "version": "0.3.4",
+  "description": "从当前目录启动无需 Root 的原生 PTY 终端，支持 ANSI/VT 交互程序并为后续 Agent 提供持久会话。",
+  "defaultLocale": "zh",
+  "localizations": {
+    "en": {
+      "name": "Terminal",
+      "description": "Start a persistent native PTY terminal from the current directory with ANSI/VT support for interactive tools and future agents."
+    }
+  },
+  "apiVersion": 3,
+  "entryClass": "com.ane.filemanager.plugin.terminal.TerminalPluginEntry",
+  "priority": 10,
+  "defaultEnabled": false
+}

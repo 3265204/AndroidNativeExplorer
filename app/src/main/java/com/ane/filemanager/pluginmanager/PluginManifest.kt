@@ -20,6 +20,7 @@ data class PluginDescriptor(
     val entryClass: String,
     val priority: Int,
     val source: PluginSource,
+    val defaultEnabled: Boolean = true,
     val codeSha256: String? = null,
     val localizations: Map<String, PluginLocalization> = emptyMap()
 )
@@ -61,6 +62,7 @@ internal fun parsePluginManifest(
         entryClass = entryClass,
         priority = value.optInt("priority", 0),
         source = source,
+        defaultEnabled = value.optBoolean("defaultEnabled", true),
         codeSha256 = digest,
         localizations = localizations
     )

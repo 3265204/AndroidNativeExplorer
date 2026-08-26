@@ -53,7 +53,13 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private val appearance = AppearanceController(context)
     private val sorting = FileSortController(context)
     private val menu = FileMenuController { postInvalidateOnAnimation() }
-    private val renderer = FileManagerRenderer(context) { postInvalidateOnAnimation() }
+    private val renderer = FileManagerRenderer(
+        context = context,
+        pluginFileIcon = { file ->
+            if (::plugins.isInitialized) plugins.fileIcon(file) else null
+        },
+        onInvalidate = { postInvalidateOnAnimation() }
+    )
     private val inertialScroll = InertialScrollController(context) { postInvalidateOnAnimation() }
     private val dockInertialScroll = InertialScrollController(context, ScrollAxis.HORIZONTAL) {
         postInvalidateOnAnimation()

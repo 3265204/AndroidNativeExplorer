@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="terminal_title">ANE 终端</string>
+    <string name="terminal_summary">PTY 交互终端 · 应用权限 · 无需 Root</string>
+    <string name="terminal_open_here">在此处打开终端</string>
+    <string name="terminal_start_directory">终端启动目录：%1$s</string>
+    <string name="terminal_close">返回文件管理器</string>
+    <string name="terminal_escape" translatable="false">Esc</string>
+    <string name="terminal_tab" translatable="false">Tab</string>
+    <string name="terminal_control_c" translatable="false">Ctrl+C</string>
+    <string name="terminal_control_d" translatable="false">Ctrl+D</string>
+    <string name="terminal_paste">粘贴</string>
+    <string name="terminal_shell_closed">Shell 会话已结束</string>
+    <string name="terminal_unavailable">无法启动 PTY 终端</string>
+    <string name="terminal_api_upgrade_required">此插件需要支持插件 API v3 的新版 ANE。</string>
+</resources>

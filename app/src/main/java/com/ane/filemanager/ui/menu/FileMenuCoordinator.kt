@@ -90,6 +90,9 @@ internal class FileMenuCoordinator(
                 add(MenuAction(action.label, run = action.run))
             }
         }
+        plugins.directoryActions(dock.currentDirectory).forEach { action ->
+            add(MenuAction(action.label, run = action.run))
+        }
         if (fileActions.hasClipboard) {
             add(MenuAction(s(R.string.action_paste_here)) { fileActions.paste() })
         }
@@ -127,6 +130,11 @@ internal class FileMenuCoordinator(
             })
             plugins.contextActions(file).forEach { action ->
                 add(MenuAction(action.label, run = action.run))
+            }
+            if (selection.size == 1 && file.isFile) {
+                add(MenuAction(s(R.string.action_choose_file_app)) {
+                    host.openFile(file, forceChooser = true)
+                })
             }
             add(MenuAction(s(R.string.action_copy)) { fileActions.copySelection(false) })
             add(MenuAction(s(R.string.action_cut)) { fileActions.copySelection(true) })

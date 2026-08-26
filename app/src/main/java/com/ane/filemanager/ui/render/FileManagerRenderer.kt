@@ -11,6 +11,7 @@ import android.graphics.RectF
 import android.graphics.Rect
 import android.os.SystemClock
 import com.ane.filemanager.R
+import com.ane.filemanager.plugin.api.PluginFileIcon
 import com.ane.filemanager.ui.model.FileHit
 import com.ane.filemanager.ui.model.LayoutMode
 import com.ane.filemanager.ui.model.MenuHit
@@ -27,7 +28,11 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** Canvas-only renderer. It owns visual metrics and hit regions, but never mutates browser state. */
-internal class FileManagerRenderer(private val context: Context, private val onInvalidate: () -> Unit) {
+internal class FileManagerRenderer(
+    private val context: Context,
+    private val pluginFileIcon: (File) -> PluginFileIcon?,
+    private val onInvalidate: () -> Unit
+) {
     private val density = context.resources.displayMetrics.density
     private fun dp(value: Float) = value * density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -297,8 +302,11 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             val iconSize = dp(appearance.iconDp.toFloat())
             val ix = row.left + dp(12f)
             val iy = row.centerY() - iconSize / 2
-            if (metadata.directory) drawFolderIcon(canvas, ix, iy, iconSize, Color.rgb(245, 176, 65))
-            else if (!drawPreview(canvas, file, RectF(ix, iy, ix + iconSize, iy + iconSize))) {
+            if (metadata.directory) {
+                drawFolderIcon(canvas, ix, iy, iconSize, Color.rgb(245, 176, 65))
+            } else if (pluginFileIcon(file) == PluginFileIcon.ARCHIVE) {
+                drawArchiveIcon(canvas, ix, iy, iconSize)
+            } else if (!drawPreview(canvas, file, RectF(ix, iy, ix + iconSize, iy + iconSize))) {
                 drawFileIcon(canvas, ix, iy, iconSize, fileColor(file))
             }
             val tx = ix + iconSize + dp(15f)
@@ -358,8 +366,13 @@ internal class FileManagerRenderer(private val context: Context, private val onI
             else rect.top + dp(12f)
             if (!hasPreview) {
                 val ix = rect.centerX() - iconSize / 2
-                if (metadata.directory) drawFolderIcon(canvas, ix, iconY, iconSize, Color.rgb(245, 176, 65))
-                else drawFileIcon(canvas, ix, iconY, iconSize, fileColor(file))
+                if (metadata.directory) {
+                    drawFolderIcon(canvas, ix, iconY, iconSize, Color.rgb(245, 176, 65))
+                } else if (pluginFileIcon(file) == PluginFileIcon.ARCHIVE) {
+                    drawArchiveIcon(canvas, ix, iconY, iconSize)
+                } else {
+                    drawFileIcon(canvas, ix, iconY, iconSize, fileColor(file))
+                }
             }
             overflowText(canvas, fileMarqueeKey(file), file.name,
                 RectF(rect.left + dp(7f), rect.bottom - dp(44f), rect.right - dp(7f), rect.bottom - dp(17f)),
@@ -423,6 +436,56 @@ internal class FileManagerRenderer(private val context: Context, private val onI
         canvas.drawRoundRect(RectF(x + size * .27f, y + size * .52f, x + size * .74f, y + size * .58f), dp(1f), dp(1f), paint)
         canvas.drawRoundRect(RectF(x + size * .27f, y + size * .67f, x + size * .67f, y + size * .73f), dp(1f), dp(1f), paint)
     }
+
+    private fun drawArchiveIcon(canvas: Canvas, x: Float, y: Float, size: Float) {
+        val left = x + size * .08f
+        val right = x + size * .92f
+        val radius = size * .07f
+        val layers = intArrayOf(
+            Color.rgb(147, 83, 191),
+            Color.rgb(49, 132, 191),
+            Color.rgb(44, 155, 117)
+        )
+        layers.forEachIndexed { index, color ->
+            val top = y + size * (.08f + index * .27f)
+            paint.color = color
+            canvas.drawRoundRect(
+                RectF(left, top, right, top + size * .24f),
+                radius,
+                radius,
+                paint
+            )
+            paint.color = blend(color, Color.WHITE, .22f)
+            canvas.drawRoundRect(
+                RectF(left + size * .05f, top + size * .04f, right - size * .05f, top + size * .08f),
+                radius / 2f,
+                radius / 2f,
+                paint
+            )
+        }
+        paint.color = Color.rgb(92, 67, 48)
+        canvas.drawRoundRect(
+            RectF(x + size * .44f, y + size * .05f, x + size * .61f, y + size * .92f),
+            size * .035f,
+            size * .035f,
+            paint
+        )
+        paint.color = Color.rgb(245, 190, 67)
+        canvas.drawRoundRect(
+            RectF(x + size * .405f, y + size * .67f, x + size * .645f, y + size * .84f),
+            size * .04f,
+            size * .04f,
+            paint
+        )
+        paint.color = Color.rgb(92, 67, 48)
+        canvas.drawRoundRect(
+            RectF(x + size * .47f, y + size * .71f, x + size * .58f, y + size * .80f),
+            size * .02f,
+            size * .02f,
+            paint
+        )
+    }
+
 
     private fun drawPreview(canvas: Canvas, file: File, destination: RectF): Boolean {
         if (!thumbnails.isPreviewable(file)) return false

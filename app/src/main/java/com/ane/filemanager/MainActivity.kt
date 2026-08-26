@@ -3,8 +3,10 @@ package com.ane.filemanager
 import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.app.PendingIntent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -18,6 +20,8 @@ import android.widget.Toast
 import android.text.InputType
 import com.ane.filemanager.operation.FileProblem
 import com.ane.filemanager.operation.fileProblemMessage
+import com.ane.filemanager.openwith.ChosenAppReceiver
+import com.ane.filemanager.openwith.OpenWithStore
 import com.ane.filemanager.provider.LocalFileProvider
 import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.ui.FileManagerView
@@ -189,21 +193,71 @@ class MainActivity : Activity() {
         )
     }
 
-    fun openFile(file: File): Boolean {
+    fun openFile(file: File, forceChooser: Boolean = false): Boolean {
         val ext = MimeTypeMap.getFileExtensionFromUrl(file.name).lowercase()
         val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
         val uri = LocalFileProvider.uriFor(this, file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            clipData = ClipData.newRawUri(file.name, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        try {
-            startActivity(intent)
-            return true
-        } catch (_: ActivityNotFoundException) {
-            toast(getString(R.string.no_viewer))
-            return false
+        val associationKey = OpenWithStore.associationKey(mime, ext)
+        if (!forceChooser) {
+            OpenWithStore.get(this, associationKey)?.let { component ->
+                if (launchExternal(Intent(intent).setComponent(component))) return true
+                OpenWithStore.remove(this, associationKey)
+            }
         }
+        chooseOpenMode(file, intent, associationKey)
+        return true
+    }
+
+    private fun chooseOpenMode(file: File, target: Intent, associationKey: String) {
+        AneDialog.message(
+            this,
+            getString(R.string.open_mode_title),
+            getString(R.string.open_mode_message, file.name),
+            listOf(
+                AneDialogAction(getString(R.string.dialog_cancel)),
+                AneDialogAction(getString(R.string.open_mode_once)) {
+                    launchChooser(target, associationKey = null)
+                },
+                AneDialogAction(getString(R.string.open_mode_always), primary = true) {
+                    launchChooser(target, associationKey)
+                }
+            )
+        )
+    }
+
+    private fun launchChooser(target: Intent, associationKey: String?) {
+        val chooser = if (associationKey == null) {
+            Intent.createChooser(target, getString(R.string.choose_file_app))
+        } else {
+            val callback = Intent(this, ChosenAppReceiver::class.java)
+                .putExtra(ChosenAppReceiver.EXTRA_ASSOCIATION_KEY, associationKey)
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+            val sender = PendingIntent.getBroadcast(
+                this,
+                nextChooserRequestCode++,
+                callback,
+                flags
+            ).intentSender
+            Intent.createChooser(target, getString(R.string.choose_file_app), sender)
+        }
+        launchExternal(chooser)
+    }
+
+    private fun launchExternal(intent: Intent): Boolean = try {
+        startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        toast(getString(R.string.no_viewer))
+        false
+    } catch (_: SecurityException) {
+        toast(getString(R.string.no_viewer))
+        false
     }
 
     fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
@@ -220,6 +274,10 @@ class MainActivity : Activity() {
                 AneDialogAction(getString(R.string.dialog_cancel)),
                 AneDialogAction(getString(R.string.dialog_exit_confirm), primary = true, run = ::finish)
             ))
+    }
+
+    private companion object {
+        var nextChooserRequestCode = 1
     }
 
 }

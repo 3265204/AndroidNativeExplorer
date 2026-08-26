@@ -47,7 +47,7 @@ internal class PluginPackageInstaller(private val context: Context) {
                     }
                 }
                 ensure(
-                    parsed.apiVersion == PluginApi.VERSION,
+                    PluginApi.supports(parsed.apiVersion),
                     R.string.plugin_error_api_incompatible,
                     parsed.apiVersion,
                     PluginApi.VERSION

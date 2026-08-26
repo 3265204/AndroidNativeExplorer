@@ -15,6 +15,11 @@
     <string name="empty_directory">此文件夹为空</string>
     <string name="empty_directory_hint">点击右下角 + 新建文件或文件夹</string>
     <string name="no_viewer">没有可打开此类型文件的应用</string>
+    <string name="choose_file_app">选择打开方式</string>
+    <string name="open_mode_title">打开模式</string>
+    <string name="open_mode_message">选择“%1$s”的打开方式。选择“始终”后，ANE 会记住本次选中的应用。</string>
+    <string name="open_mode_once">仅此一次</string>
+    <string name="open_mode_always">始终</string>
     <string name="file_manager_description">本地文件管理器</string>
     <string name="app_menu_symbol" translatable="false">☰</string>
     <string name="navigate_up_symbol" translatable="false">↑</string>
@@ -38,6 +43,7 @@
     <string name="action_exit_multi_select">退出多选模式</string>
     <string name="action_rename">重命名</string>
     <string name="action_delete">删除</string>
+    <string name="action_choose_file_app">选择打开方式</string>
     <string name="action_close_tab">关闭标签页</string>
     <string name="action_pin">固定</string>
     <string name="action_unpin">取消固定</string>
