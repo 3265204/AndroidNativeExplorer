@@ -9,9 +9,11 @@ import android.graphics.drawable.GradientDrawable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -57,7 +59,7 @@ internal object AneDialog {
         frame.body.addView(input, LinearLayout.LayoutParams(-1, -2))
         frame.body.addView(error, LinearLayout.LayoutParams(-1, -2))
         addButton(frame, AneDialogAction(cancelLabel)) { frame.dialog.cancel() }
-        addButton(frame, AneDialogAction(confirmLabel, primary = true)) {
+        val submit = {
             val value = input.text.toString().trim()
             val problem = validate(value)
             if (problem != null) {
@@ -66,6 +68,24 @@ internal object AneDialog {
             } else {
                 frame.dialog.dismiss()
                 onConfirm(value)
+            }
+        }
+        addButton(frame, AneDialogAction(confirmLabel, primary = true), submit)
+        input.imeOptions = EditorInfo.IME_ACTION_DONE
+        input.setOnEditorActionListener { _, actionId, event ->
+            val isImeDone = event == null && actionId == EditorInfo.IME_ACTION_DONE
+            val isEnterDown = event?.let {
+                it.action == KeyEvent.ACTION_DOWN &&
+                    it.repeatCount == 0 &&
+                    it.hasNoModifiers() &&
+                    (it.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        it.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+            } == true
+            if (isImeDone || isEnterDown) {
+                submit()
+                true
+            } else {
+                false
             }
         }
         if (onCancel != null) frame.dialog.setOnCancelListener { onCancel() }
