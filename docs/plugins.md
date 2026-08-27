@@ -5,14 +5,14 @@ ANE 使用普通 ZIP 作为应用内插件安装。用户先在 ANE 中进入 ZI
 ## 1. 边界与目录
 
 - 公共 ABI 位于独立 `plugin-api` 模块；安装、发现和启停位于 `pluginmanager`，不伪装成一个插件实现或运行层。
-- 内置插件分别位于 `plugin/archive`、`plugin/text`、`plugin/audio`、`plugin/image`、`plugin/video`、`plugin/terminal`。终端的独立 ZIP 工程只引用 `plugin/terminal` 这份源码，不维护第二份实现。不存在 `viewer` 总分类。
+- 内置插件分别位于 `plugin/archive`、`plugin/text`、`plugin/audio`、`plugin/image`、`plugin/video`、`plugin/terminal`。
 - 每个插件自行拥有扩展名、MIME、文件签名探测、解析、密码、目录序列、界面和运行期资源。
 - `plugin` 下禁止建立 `shared`、`support`、`runtime` 或 `viewer` 总目录；插件之间不得共享文件类型总表或隐式运行层。
 - 新增内置插件只添加实现类和 `assets/ane-plugins/<id>.json`，不得编辑 `PluginRegistry` 中的类型列表。
 
 ## 2. API v3
 
-当前宿主 API 版本为 v3，并继续加载 `apiVersion: 2` 的旧插件。v3 新增宿主拥有的原生 PTY 会话；普通文件处理、长按动作和选区动作的接口保持兼容。
+当前宿主 API 版本为 v3。
 
 插件入口必须是公开、无参构造的类，并实现：
 

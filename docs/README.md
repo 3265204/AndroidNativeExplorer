@@ -26,7 +26,7 @@ ane/
 │     └─ res/                仅文件管理器核心资源
 ├─ plugin-api/              插件开发 SDK（AAR）
 ├─ docs/
-├─ testphoto/
+├─ testphoto/               adb测试文件
 ├─ README.md
 ├─ build.gradle
 ├─ settings.gradle
