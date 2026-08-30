@@ -14,7 +14,9 @@
     <string name="empty_directory">This folder is empty</string>
     <string name="empty_directory_hint">Tap + at the bottom right to create a file or folder</string>
     <string name="no_viewer">No app can open this file type</string>
+    <string name="no_share_app">No app can share these files</string>
     <string name="choose_file_app">Choose an app</string>
+    <string name="share_file_chooser">Share files</string>
     <string name="open_mode_title">Open mode</string>
     <string name="open_mode_message">Choose how to open “%1$s”. Always remembers the app you select for this file type in ANE.</string>
     <string name="open_mode_once">Just once</string>
@@ -41,6 +43,7 @@
     <string name="action_rename">Rename</string>
     <string name="action_delete">Delete</string>
     <string name="action_choose_file_app">Open with…</string>
+    <string name="action_share">Share</string>
     <string name="action_close_tab">Close tab</string>
     <string name="action_pin">Pin</string>
     <string name="action_unpin">Unpin</string>

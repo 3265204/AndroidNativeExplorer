@@ -120,6 +120,7 @@ internal class FileMenuCoordinator(
 
     fun showFile(file: File, x: Float, y: Float) {
         selection.prepareContext(file)
+        val selectedFiles = selection.files()
         val actions = buildList {
             add(MenuAction(s(if (selection.multiSelect) {
                 R.string.action_exit_multi_select
@@ -135,6 +136,9 @@ internal class FileMenuCoordinator(
                 add(MenuAction(s(R.string.action_choose_file_app)) {
                     host.openFile(file, forceChooser = true)
                 })
+            }
+            if (selectedFiles.isNotEmpty() && selectedFiles.all(File::isFile)) {
+                add(MenuAction(s(R.string.action_share)) { host.shareFiles(selectedFiles) })
             }
             add(MenuAction(s(R.string.action_copy)) { fileActions.copySelection(false) })
             add(MenuAction(s(R.string.action_cut)) { fileActions.copySelection(true) })

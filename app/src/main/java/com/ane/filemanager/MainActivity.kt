@@ -24,6 +24,7 @@ import com.ane.filemanager.openwith.ChosenAppReceiver
 import com.ane.filemanager.openwith.OpenWithStore
 import com.ane.filemanager.provider.LocalFileProvider
 import com.ane.filemanager.localization.AppLanguage
+import com.ane.filemanager.sharing.ShareMimeTypes
 import com.ane.filemanager.ui.FileManagerView
 import com.ane.filemanager.ui.dialog.AneDialog
 import com.ane.filemanager.ui.dialog.AneDialogAction
@@ -194,8 +195,8 @@ class MainActivity : Activity() {
     }
 
     fun openFile(file: File, forceChooser: Boolean = false): Boolean {
-        val ext = MimeTypeMap.getFileExtensionFromUrl(file.name).lowercase()
-        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
+        val ext = fileExtension(file)
+        val mime = mimeType(file)
         val uri = LocalFileProvider.uriFor(this, file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
@@ -211,6 +212,28 @@ class MainActivity : Activity() {
         }
         chooseOpenMode(file, intent, associationKey)
         return true
+    }
+
+    fun shareFiles(files: List<File>): Boolean {
+        if (files.isEmpty() || files.any { !it.isFile }) return false
+
+        val uris = ArrayList(files.map { LocalFileProvider.uriFor(this, it) })
+        val mimeTypes = files.map(::mimeType)
+        val target = Intent(if (files.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
+            type = ShareMimeTypes.common(mimeTypes)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newRawUri(files.first().name, uris.first()).apply {
+                uris.drop(1).forEach { addItem(ClipData.Item(it)) }
+            }
+            if (uris.size == 1) {
+                putExtra(Intent.EXTRA_STREAM, uris.first())
+            } else {
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.distinct().toTypedArray())
+            }
+        }
+        val chooser = Intent.createChooser(target, getString(R.string.share_file_chooser))
+        return launchExternal(chooser, R.string.no_share_app)
     }
 
     private fun chooseOpenMode(file: File, target: Intent, associationKey: String) {
@@ -249,16 +272,22 @@ class MainActivity : Activity() {
         launchExternal(chooser)
     }
 
-    private fun launchExternal(intent: Intent): Boolean = try {
+    private fun launchExternal(intent: Intent, failureMessage: Int = R.string.no_viewer): Boolean = try {
         startActivity(intent)
         true
     } catch (_: ActivityNotFoundException) {
-        toast(getString(R.string.no_viewer))
+        toast(getString(failureMessage))
         false
     } catch (_: SecurityException) {
-        toast(getString(R.string.no_viewer))
+        toast(getString(failureMessage))
         false
     }
+
+    private fun fileExtension(file: File): String =
+        MimeTypeMap.getFileExtensionFromUrl(file.name).lowercase()
+
+    private fun mimeType(file: File): String =
+        MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExtension(file)) ?: "*/*"
 
     fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
