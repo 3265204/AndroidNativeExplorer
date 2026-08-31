@@ -18,6 +18,7 @@ import com.ane.filemanager.ui.model.MenuHit
 import com.ane.filemanager.ui.model.MenuKind
 import com.ane.filemanager.ui.model.RenderState
 import com.ane.filemanager.ui.model.TabHit
+import com.ane.filemanager.ui.model.TabMotionStart
 import com.ane.filemanager.ui.theme.AppThemePalette
 import java.io.File
 import java.text.SimpleDateFormat
@@ -64,11 +65,14 @@ internal class FileManagerRenderer(
 
     val fileHits = mutableListOf<FileHit>()
     val tabHits = mutableListOf<TabHit>()
+    val tabSlotHits = mutableListOf<TabHit>()
+    val tabCloseHits = mutableListOf<TabHit>()
     val menuHits = mutableListOf<MenuHit>()
     var maxScroll = 0f
         private set
     var maxDockScroll = 0f
         private set
+    private var visualTabStarts = emptyList<TabMotionStart>()
 
     val topHeight get() = dp(56f)
     val bottomHeight get() = dp(58f)
@@ -94,6 +98,8 @@ internal class FileManagerRenderer(
     }
 
     fun fileAt(x: Float, y: Float): File? = fileHits.lastOrNull { it.rect.contains(x, y) }?.file
+
+    fun tabVisualStarts(): List<TabMotionStart> = visualTabStarts.toList()
 
     fun restartFileMarquee(file: File) {
         marqueeStarts[fileMarqueeKey(file)] = MARQUEE_RESTART_PENDING
@@ -174,6 +180,7 @@ internal class FileManagerRenderer(
         "line" -> palette().outline
         "selected" -> palette().selected
         "primary" -> palette().primary
+        "danger" -> palette().danger
         else -> Color.MAGENTA
     }
 
@@ -217,9 +224,9 @@ internal class FileManagerRenderer(
         canvas.drawRect(contentLeft, topBarBottom - dp(1f), contentRight, topBarBottom, paint)
         canvas.save()
         canvas.clipRect(contentLeft, topBarTop, contentRight, topBarBottom)
-        text(canvas, context.getString(R.string.app_menu_symbol), menuX, centerY, 23f, color("text"), Paint.Align.CENTER)
-        text(canvas, context.getString(R.string.navigate_up_symbol), upX, centerY, 23f,
-            if (tab.directory.parentFile != null) color("text") else color("muted"), Paint.Align.CENTER)
+        drawMenuIcon(canvas, menuX, centerY)
+        drawNavigateUpIcon(canvas, upX, centerY,
+            if (tab.directory.parentFile != null) color("text") else color("muted"))
         val title = if (state.multiSelect) {
             context.getString(R.string.multi_select_count, state.selected.size)
         } else tab.directory.absolutePath
@@ -237,9 +244,38 @@ internal class FileManagerRenderer(
             RectF(address.left + horizontalPad, address.top, address.right - horizontalPad, address.bottom),
             centerY, if (state.multiSelect) 15f else 14f, color("text"),
             Paint.Align.LEFT, state.multiSelect, false)
-        text(canvas, context.getString(R.string.sort_symbol), sortX, centerY, 22f,
-            color("text"), Paint.Align.CENTER)
+        drawSortIcon(canvas, sortX, centerY)
         canvas.restore()
+    }
+
+    private fun drawMenuIcon(canvas: Canvas, cx: Float, cy: Float) {
+        prepareTopBarIconStroke(color("text"))
+        val half = dp(9f)
+        for (offset in floatArrayOf(-6f, 0f, 6f)) {
+            canvas.drawLine(cx - half, cy + dp(offset), cx + half, cy + dp(offset), stroke)
+        }
+    }
+
+    private fun drawNavigateUpIcon(canvas: Canvas, cx: Float, cy: Float, tint: Int) {
+        prepareTopBarIconStroke(tint)
+        canvas.drawLine(cx, cy + dp(9f), cx, cy - dp(8f), stroke)
+        canvas.drawLine(cx, cy - dp(8f), cx - dp(6f), cy - dp(2f), stroke)
+        canvas.drawLine(cx, cy - dp(8f), cx + dp(6f), cy - dp(2f), stroke)
+    }
+
+    private fun drawSortIcon(canvas: Canvas, cx: Float, cy: Float) {
+        prepareTopBarIconStroke(color("text"))
+        canvas.drawLine(cx - dp(9f), cy - dp(6f), cx + dp(9f), cy - dp(6f), stroke)
+        canvas.drawLine(cx - dp(6f), cy, cx + dp(6f), cy, stroke)
+        canvas.drawLine(cx - dp(3f), cy + dp(6f), cx + dp(3f), cy + dp(6f), stroke)
+    }
+
+    private fun prepareTopBarIconStroke(tint: Int) {
+        stroke.color = tint
+        stroke.alpha = 255
+        stroke.strokeWidth = dp(2.1f)
+        stroke.strokeCap = Paint.Cap.ROUND
+        stroke.style = Paint.Style.STROKE
     }
 
     private fun drawFiles(canvas: Canvas) {
@@ -249,6 +285,15 @@ internal class FileManagerRenderer(
         val tab = state.tabs[state.activeTab]
         canvas.save()
         canvas.clipRect(contentLeft, top, contentRight, bottom)
+        val contentProgress = state.dockMotion.contentProgress.coerceIn(0f, 1f)
+        val animateContent = !state.directoryTransitioning && contentProgress < 1f
+        if (animateContent) {
+            canvas.translate(dp(12f) * state.dockMotion.direction * (1f - contentProgress), 0f)
+            canvas.saveLayerAlpha(
+                contentLeft - dp(16f), top, contentRight + dp(16f), bottom,
+                (255f * contentProgress).toInt().coerceIn(0, 255)
+            )
+        }
         when {
             !state.canAccessStorage -> {
                 drawEmpty(canvas, context.getString(R.string.storage_permission_required),
@@ -267,6 +312,10 @@ internal class FileManagerRenderer(
         // The previous directory remains as a visual snapshot until the async list is
         // committed. It must not remain a hit target for the newly active directory.
         if (state.directoryTransitioning) fileHits.clear()
+        if (animateContent) {
+            fileHits.clear()
+            canvas.restore()
+        }
         canvas.restore()
     }
 
@@ -592,6 +641,8 @@ internal class FileManagerRenderer(
         paint.color = color("surface"); canvas.drawRect(contentLeft, top, contentRight, bottom, paint)
         paint.color = color("line"); canvas.drawRect(contentLeft, top, contentRight, top + dp(1f), paint)
         tabHits.clear()
+        tabSlotHits.clear()
+        tabCloseHits.clear()
         val viewportWidth = contentRight - contentLeft
         if (viewportWidth <= 0f) {
             maxDockScroll = 0f
@@ -600,7 +651,8 @@ internal class FileManagerRenderer(
         val minTabWidth = min(dp(86f), viewportWidth)
         val maxTabWidth = max(minTabWidth, min(dp(220f), viewportWidth * .72f))
         val widths = state.tabs.map { tab ->
-            textWidth(tab.label, 12.5f, false).plus(dp(36f)).coerceIn(minTabWidth, maxTabWidth)
+            textWidth(tab.label, 12.5f, false).plus(dp(if (state.dockEditing) 54f else 36f))
+                .coerceIn(minTabWidth, maxTabWidth)
         }.toMutableList()
         val measuredWidth = widths.sum()
         if (measuredWidth < viewportWidth && widths.isNotEmpty()) {
@@ -610,17 +662,34 @@ internal class FileManagerRenderer(
         val totalWidth = widths.sum()
         maxDockScroll = max(0f, totalWidth - viewportWidth)
         var logicalLeft = contentLeft
+        val targetRects = widths.map { tabWidth ->
+            RectF(logicalLeft - state.dockScrollX, top,
+                logicalLeft + tabWidth - state.dockScrollX, bottom).also { logicalLeft += tabWidth }
+        }
+        val reorderProgress = state.dockMotion.reorderProgress.coerceIn(0f, 1f)
+        val tabRects = targetRects.mapIndexed { index, target ->
+            val previousLeft = state.dockMotion.reorderStarts
+                .firstOrNull { it.tab === state.tabs[index] }?.left
+            RectF(target).apply {
+                if (previousLeft != null && reorderProgress < 1f) {
+                    offset((previousLeft - target.left) * (1f - reorderProgress), 0f)
+                }
+            }
+        }
+        visualTabStarts = state.tabs.mapIndexed { index, tab -> TabMotionStart(tab, tabRects[index].left) }
         canvas.save()
         canvas.clipRect(contentLeft, top, contentRight, bottom)
+        drawActiveTabIndicator(canvas, tabRects)
         state.tabs.forEachIndexed { index, tab ->
-            val tabWidth = widths[index]
-            val rect = RectF(logicalLeft - state.dockScrollX, top,
-                logicalLeft + tabWidth - state.dockScrollX, bottom)
-            logicalLeft += tabWidth
+            val rect = tabRects[index]
+            val targetRect = targetRects[index]
             if (rect.right >= contentLeft && rect.left <= contentRight) tabHits += TabHit(index, RectF(rect))
+            if (targetRect.right >= contentLeft && targetRect.left <= contentRight) {
+                tabSlotHits += TabHit(index, RectF(targetRect))
+            }
             val dragTarget = state.dragging && rect.contains(state.dragX, state.dragY)
             val tabBeingDragged = state.tabDragging && index == state.draggedTabIndex
-            if (index == state.activeTab || dragTarget || tabBeingDragged) {
+            if (dragTarget || tabBeingDragged) {
                 paint.color = if (dragTarget) color("selected") else color("surface2")
                 val lift = if (tabBeingDragged) dp(3f) else 0f
                 val highlight = RectF(rect.left + dp(5f), rect.top + dp(8f) - lift,
@@ -636,16 +705,78 @@ internal class FileManagerRenderer(
                     canvas.drawRoundRect(highlight, dp(10f), dp(10f), stroke)
                 }
             }
+            val labelRightPadding = if (state.dockEditing && index > 0) 29f else 13f
             overflowText(canvas, tabMarqueeKey(index), tab.label,
-                RectF(rect.left + dp(13f), rect.top + dp(7f), rect.right - dp(13f), rect.bottom - dp(6f)),
+                RectF(rect.left + dp(13f), rect.top + dp(7f), rect.right - dp(labelRightPadding), rect.bottom - dp(6f)),
                 rect.centerY(), 12.5f, when {
                     index == state.activeTab -> color("primary")
                     tab.pinned -> color("muted")
                     else -> color("text")
                 }, Paint.Align.CENTER, index == state.activeTab,
                 index == state.activeTab || dragTarget || tabBeingDragged)
+            if (state.dockEditing && index > 0) drawTabManagementButton(canvas, index, rect)
         }
         canvas.restore()
+    }
+
+    private fun drawActiveTabIndicator(canvas: Canvas, rects: List<RectF>) {
+        val activeRect = rects.getOrNull(state.activeTab) ?: return
+        val motion = state.dockMotion
+        val from = rects.getOrNull(motion.fromTab)
+        val to = rects.getOrNull(motion.toTab)
+        val rect = if (from != null && to != null && motion.indicatorProgress < 1f) {
+            val progress = motion.indicatorProgress.coerceIn(0f, 1f)
+            RectF(
+                lerp(from.left, to.left, progress),
+                lerp(from.top, to.top, progress),
+                lerp(from.right, to.right, progress),
+                lerp(from.bottom, to.bottom, progress)
+            )
+        } else activeRect
+        paint.color = color("surface2")
+        canvas.drawRoundRect(
+            RectF(rect.left + dp(5f), rect.top + dp(8f), rect.right - dp(5f), rect.bottom - dp(7f)),
+            dp(10f), dp(10f), paint
+        )
+        paint.color = color("primary")
+        canvas.drawRoundRect(
+            RectF(rect.left + dp(19f), rect.top + dp(5f), rect.right - dp(19f), rect.top + dp(8f)),
+            dp(2f), dp(2f), paint
+        )
+    }
+
+    private fun lerp(start: Float, end: Float, progress: Float) = start + (end - start) * progress
+
+    private fun drawTabManagementButton(
+        canvas: Canvas,
+        index: Int,
+        tabRect: RectF
+    ) {
+        val cx = tabRect.right - dp(13f)
+        val cy = tabRect.top + dp(15f)
+        val accent = color("danger")
+        val softAccent = blend(desaturate(accent, .48f), color("muted"), .16f)
+        val badgeColor = blend(
+            color("surface2"),
+            softAccent,
+            if (state.appearance.dark) .32f else .20f
+        )
+        paint.color = badgeColor
+        paint.alpha = 255
+        canvas.drawCircle(cx, cy, dp(8.5f), paint)
+        stroke.color = blend(color("line"), softAccent, .58f)
+        stroke.alpha = 255
+        stroke.strokeWidth = dp(1f)
+        canvas.drawCircle(cx, cy, dp(8f), stroke)
+        stroke.color = softAccent
+        stroke.strokeWidth = dp(1.65f)
+        stroke.strokeCap = Paint.Cap.ROUND
+        val arm = dp(2.8f)
+        canvas.drawLine(cx - arm, cy - arm, cx + arm, cy + arm, stroke)
+        canvas.drawLine(cx + arm, cy - arm, cx - arm, cy + arm, stroke)
+        tabCloseHits += TabHit(index, RectF(
+            cx - dp(16f), tabRect.top, cx + dp(16f), tabRect.top + dp(37f)
+        ))
     }
 
     private fun drawDragPreview(canvas: Canvas) {
@@ -819,6 +950,12 @@ internal class FileManagerRenderer(
             (Color.green(a) * inverse + Color.green(b) * ratio).toInt(),
             (Color.blue(a) * inverse + Color.blue(b) * ratio).toInt()
         )
+    }
+
+    private fun desaturate(source: Int, amount: Float): Int {
+        val gray = (Color.red(source) * .299f + Color.green(source) * .587f +
+            Color.blue(source) * .114f).toInt()
+        return blend(source, Color.rgb(gray, gray, gray), amount.coerceIn(0f, 1f))
     }
 
     private fun fadeColor(color: Int, progress: Float): Int = Color.argb(

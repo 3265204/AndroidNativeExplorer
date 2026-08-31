@@ -8,6 +8,21 @@ internal data class MotionSnapshot(
     val menuProgress: Float = 1f
 )
 
+internal data class TabMotionStart(
+    val tab: BrowserTab,
+    val left: Float
+)
+
+internal data class DockMotionSnapshot(
+    val reorderStarts: List<TabMotionStart> = emptyList(),
+    val reorderProgress: Float = 1f,
+    val fromTab: Int = -1,
+    val toTab: Int = -1,
+    val indicatorProgress: Float = 1f,
+    val contentProgress: Float = 1f,
+    val direction: Int = 0
+)
+
 internal data class FileHit(val file: File, val rect: RectF)
 internal data class TabHit(val index: Int, val rect: RectF)
 internal data class MenuAction(
@@ -45,6 +60,7 @@ internal data class RenderState(
     val canReadDirectory: Boolean,
     val scrollY: Float,
     val dockScrollX: Float,
+    val dockEditing: Boolean,
     val appearance: AppearanceSettings,
     val dragging: Boolean,
     val tabDragging: Boolean,
@@ -60,6 +76,7 @@ internal data class RenderState(
     val menuOriginY: Float,
     val busyText: String?,
     val motion: MotionSnapshot,
+    val dockMotion: DockMotionSnapshot,
     val deferPreviews: Boolean = false,
     val directoryTransitioning: Boolean = false,
     val insets: UiInsets = UiInsets()

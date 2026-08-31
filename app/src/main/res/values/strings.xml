@@ -53,6 +53,9 @@
     <string name="action_pin_tab">固定标签栏</string>
     <string name="action_unpin_tab">取消固定标签栏</string>
     <string name="action_rename_tab">重命名标签</string>
+    <string name="dock_unpin_confirm_title">取消固定标签？</string>
+    <string name="dock_unpin_confirm_message">“%1$s”已固定。取消固定后标签仍会保留，再次点击 × 才会关闭它。</string>
+    <string name="dock_unpin_confirm_action">取消固定</string>
 
     <string name="setting_language">选择语言</string>
     <string name="setting_settings">设置</string>

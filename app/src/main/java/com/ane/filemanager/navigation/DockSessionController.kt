@@ -110,6 +110,10 @@ internal class DockSessionController(
 
     fun close(index: Int): Boolean {
         if (index !in tabs.indices || tabs[index].pinned || tabs.size <= 1) return false
+        return removeAt(index)
+    }
+
+    private fun removeAt(index: Int): Boolean {
         val wasActive = index == activeIndex
         tabs.removeAt(index)
         activeIndex = when {

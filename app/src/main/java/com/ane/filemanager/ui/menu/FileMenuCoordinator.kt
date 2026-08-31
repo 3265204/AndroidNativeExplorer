@@ -30,6 +30,8 @@ internal class FileMenuCoordinator(
     private val invalidate: () -> Unit,
     private val searchCurrentFolder: () -> Unit,
     private val onNavigationChanged: () -> Unit,
+    private val beginDockManagement: () -> Unit,
+    private val changeDockOrder: (action: () -> Unit) -> Unit,
     private val onLayoutChanged: () -> Unit,
     private val openPermissionSettings: () -> Unit
 ) {
@@ -204,14 +206,16 @@ internal class FileMenuCoordinator(
         val actions = buildList {
             add(MenuAction(
                 label = s(R.string.setting_tab_manager),
-                runAt = { originX, originY -> showTabManager(originX, originY) }
+                run = beginDockManagement
             ))
             if (index > 0) add(MenuAction(s(if (tab.pinned) {
                 R.string.action_unpin_tab
             } else {
                 R.string.action_pin_tab
             })) {
-                if (tab.pinned) dock.unpin(index) else dock.pin(index)
+                changeDockOrder {
+                    if (tab.pinned) dock.unpin(index) else dock.pin(index)
+                }
                 invalidate()
             })
             add(MenuAction(s(R.string.action_rename_tab)) { renameTab(index) })
@@ -235,7 +239,9 @@ internal class FileMenuCoordinator(
     }
 
     private fun closeTemporaryTab(index: Int) {
-        if (dock.close(index)) {
+        var closed = false
+        changeDockOrder { closed = dock.close(index) }
+        if (closed) {
             selection.exitMultiSelect()
             onNavigationChanged()
         }

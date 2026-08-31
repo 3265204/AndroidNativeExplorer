@@ -52,6 +52,24 @@ class DockSessionControllerTest {
     }
 
     @Test
+    fun `pinned tab must be unpinned before it can be closed`() {
+        val root = File("/storage")
+        val downloads = File(root, "Download")
+        val temporary = File(root, "Work")
+        val controller = controller(root, listOf(
+            BrowserTab("Storage", root, pinned = true),
+            BrowserTab("Downloads", downloads, pinned = true),
+            BrowserTab("Work", temporary, pinned = false)
+        ), downloads)
+
+        assertFalse(controller.close(1))
+        controller.unpin(1)
+        val movedIndex = controller.tabs.indexOfFirst { it.directory == downloads }
+        assertTrue(controller.close(movedIndex))
+        assertEquals(listOf(root, temporary), controller.tabs.map(BrowserTab::directory))
+    }
+
+    @Test
     fun `changing a tab directory clears stale history and rejects duplicate directories`() {
         val base = Files.createTempDirectory("ane-tabs").toFile()
         val root = File(base, "storage").apply { mkdirs() }

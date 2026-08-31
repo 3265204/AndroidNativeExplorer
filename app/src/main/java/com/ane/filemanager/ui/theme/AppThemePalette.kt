@@ -33,7 +33,11 @@ internal data class AppThemePalette(
                 outline = system(context, if (dark) "system_neutral2_700" else "system_neutral2_200", fallback.outline),
                 primary = primary,
                 selected = blend(surface, primary, if (dark) .34f else .18f),
-                danger = fallback.danger
+                danger = system(
+                    context,
+                    if (dark) "system_accent3_300" else "system_accent3_600",
+                    fallback.danger
+                )
             )
         }
 

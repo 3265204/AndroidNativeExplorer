@@ -50,6 +50,9 @@
     <string name="action_pin_tab">Pin tab</string>
     <string name="action_unpin_tab">Unpin tab</string>
     <string name="action_rename_tab">Rename tab</string>
+    <string name="dock_unpin_confirm_title">Unpin this tab?</string>
+    <string name="dock_unpin_confirm_message">“%1$s” is pinned. It will stay in the Dock after being unpinned; tap × again to close it.</string>
+    <string name="dock_unpin_confirm_action">Unpin</string>
 
     <string name="setting_language">Select language</string>
     <string name="setting_settings">Settings</string>

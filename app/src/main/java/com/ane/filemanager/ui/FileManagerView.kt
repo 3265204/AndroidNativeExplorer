@@ -26,12 +26,15 @@ import com.ane.filemanager.operation.FileActionController
 import com.ane.filemanager.pluginmanager.PluginRegistry
 import com.ane.filemanager.ui.appearance.AppearanceController
 import com.ane.filemanager.ui.directory.DirectoryLoader
+import com.ane.filemanager.ui.dialog.AneDialog
+import com.ane.filemanager.ui.dialog.AneDialogAction
 import com.ane.filemanager.ui.menu.FileMenuController
 import com.ane.filemanager.ui.menu.FileMenuCoordinator
 import com.ane.filemanager.ui.model.MenuKind
 import com.ane.filemanager.ui.model.RenderState
 import com.ane.filemanager.ui.model.UiInsets
 import com.ane.filemanager.ui.motion.GestureTiming
+import com.ane.filemanager.ui.motion.DockMotionController
 import com.ane.filemanager.ui.motion.InertialScrollController
 import com.ane.filemanager.ui.motion.ScrollAxis
 import com.ane.filemanager.ui.render.FileManagerRenderer
@@ -64,6 +67,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private val dockInertialScroll = InertialScrollController(context, ScrollAxis.HORIZONTAL) {
         postInvalidateOnAnimation()
     }
+    private val dockMotion = DockMotionController { postInvalidateOnAnimation() }
     private lateinit var fileActions: FileActionController
     private lateinit var plugins: PluginRegistry
     private lateinit var menus: FileMenuCoordinator
@@ -80,6 +84,10 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             items = loaded
             displayedDirectoryPath = directory.absolutePath
             directoryTransitioning = false
+            if (pendingContentRevealPath == directory.absolutePath) {
+                pendingContentRevealPath = null
+                dockMotion.revealContent()
+            }
             selection.retain(items)
             scrollY = scrollY.coerceAtLeast(0f)
             invalidate()
@@ -100,6 +108,10 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private var dockScrollX = 0f
     private var maxDockScroll = 0f
     private var revealActiveTab = true
+    private var dockEditing = false
+    private lateinit var lastActiveTab: BrowserTab
+    private var lastActiveIndex = 0
+    private var pendingContentRevealPath: String? = null
     private var busyText: String? = null
     private var systemInsets = UiInsets()
 
@@ -109,6 +121,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private var lastY = 0f
     private var downFile: File? = null
     private var downTab = -1
+    private var downCloseTab: BrowserTab? = null
     private var moved = false
     private var scrolling = false
     private var dockScrolling = false
@@ -134,8 +147,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
                 renderer.restartTabMarquee(index)
                 if (dock.switchTo(index)) {
                     selection.exitMultiSelect()
-                    scrollY = 0f
-                    refresh()
+                    onNavigationChanged()
                 }
             } else {
                 downFile?.let { file ->
@@ -183,6 +195,8 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             activeDirectory = restored?.activeDirectory ?: root,
             onChanged = ::persistDock
         )
+        lastActiveTab = dock.currentTab
+        lastActiveIndex = dock.activeIndex
         persistDock()
         fileActions = FileActionController(
             host = host,
@@ -211,7 +225,9 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             dp = ::dp,
             invalidate = { invalidate() },
             searchCurrentFolder = ::searchCurrentFolder,
-            onNavigationChanged = { scrollY = 0f; revealActiveTab = true; refresh() },
+            onNavigationChanged = ::onNavigationChanged,
+            beginDockManagement = ::beginDockManagement,
+            changeDockOrder = ::changeDockOrder,
             onLayoutChanged = { scrollY = 0f; revealActiveTab = true; invalidate() },
             openPermissionSettings = { openPermissionSettings() }
         )
@@ -228,6 +244,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         handler.removeCallbacksAndMessages(null)
         inertialScroll.onCancel()
         dockInertialScroll.onCancel()
+        dockMotion.cancel()
         directoryLoader.close()
         renderer.close()
         if (::fileActions.isInitialized) fileActions.close()
@@ -295,6 +312,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             canReadDirectory = currentDirectory.canRead(),
             scrollY = scrollY,
             dockScrollX = dockScrollX,
+            dockEditing = dockEditing,
             appearance = appearance.snapshot(),
             dragging = dragging,
             tabDragging = tabDragging,
@@ -310,6 +328,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             menuOriginY = menuState.originY,
             busyText = busyText,
             motion = menuState.motion,
+            dockMotion = dockMotion.snapshot(),
             deferPreviews = scrolling || inertialScroll.isActive,
             directoryTransitioning = directoryTransitioning,
             insets = systemInsets
@@ -423,6 +442,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         longTriggered = false; dragging = false; tabDragging = false
         draggedTab = null; dragCancelHover = false; slideSelecting = false
         slideCandidateFile = null
+        downCloseTab = null
         selection.endSlide()
         // The floating action button is visually above list rows and must also win hit testing.
         if (menu.kind == MenuKind.NONE && renderer.isFab(
@@ -435,7 +455,13 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         val inDock = y in contentBottom..(height - systemInsets.bottom).toFloat()
         if (inDock) {
             downFile = null
-            downTab = renderer.tabHits.lastOrNull { it.rect.contains(x, y) }?.index ?: -1
+            val closeIndex = if (dockEditing) {
+                renderer.tabCloseHits.lastOrNull { it.rect.contains(x, y) }?.index
+            } else null
+            downCloseTab = closeIndex?.let(tabs::getOrNull)
+            downTab = if (downCloseTab == null) {
+                renderer.tabHits.lastOrNull { it.rect.contains(x, y) }?.index ?: -1
+            } else -1
         } else {
             downFile = renderer.fileHits.lastOrNull { it.rect.contains(x, y) }?.file
             downTab = -1
@@ -443,7 +469,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         // A selection handle is only a slide-selection candidate until the pointer moves.
         // Keeping the long-press timer alive restores folder dragging from the same area.
         slideCandidateFile = if (inDock) null else renderer.selectionHandleFile(x, y)
-        if (menu.kind == MenuKind.NONE && (downFile != null || downTab >= 0)) {
+        if (menu.kind == MenuKind.NONE && !dockEditing && (downFile != null || downTab >= 0)) {
             handler.postDelayed(longPressRunnable, GestureTiming.longPressTimeoutMs)
         }
     }
@@ -509,7 +535,15 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             resetGesture()
             return
         }
+        val releasedCloseTab = if (dockEditing) {
+            renderer.tabCloseHits.lastOrNull { it.rect.contains(x, y) }
+                ?.index?.let(tabs::getOrNull)
+        } else null
         when {
+            dockEditing && !moved && downCloseTab != null && releasedCloseTab === downCloseTab ->
+                removeManagedTab(downCloseTab!!)
+            dockEditing && !moved && downCloseTab != null -> Unit
+            dockEditing && !moved && downTab < 0 -> dockEditing = false
             dragging -> finishDrag(x, y)
             tabDragging -> Unit
             slideSelecting -> Unit
@@ -556,7 +590,8 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
 
     private fun resetGesture() {
         handler.removeCallbacks(longPressRunnable)
-        downFile = null; downTab = -1; moved = false; scrolling = false; dockScrolling = false
+        downFile = null; downTab = -1; downCloseTab = null
+        moved = false; scrolling = false; dockScrolling = false
         longTriggered = false; dragging = false; tabDragging = false
         draggedTab = null; dragCancelHover = false
         slideSelecting = false; slideCandidateFile = null; selection.endSlide()
@@ -567,10 +602,15 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         autoScrollDockDuringTabDrag(x)
         val tab = draggedTab ?: return
         val from = tabs.indexOf(tab)
-        val to = renderer.tabHits.lastOrNull { it.rect.contains(x, dragY) }?.index ?: return
+        val to = renderer.tabSlotHits.lastOrNull { it.rect.contains(x, dragY) }?.index ?: return
         if (from <= 0 || to == from) return
+        val starts = renderer.tabVisualStarts()
         val movedTo = dock.moveTab(from, to)
-        if (movedTo != from) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        if (movedTo != from) {
+            dockMotion.reorderFrom(starts)
+            lastActiveIndex = dock.activeIndex
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        }
     }
 
     private fun autoScrollDockDuringTabDrag(x: Float) {
@@ -610,13 +650,95 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         selection.applySlide(file)
     }
 
+    private fun beginDockManagement() {
+        dockEditing = true
+        revealActiveTab = true
+        performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        invalidate()
+    }
+
+    private fun removeManagedTab(tab: BrowserTab) {
+        val index = tabs.indexOfFirst { it === tab }
+        if (index <= 0) return
+        if (tab.pinned) {
+            confirmManagedTabUnpin(tab)
+            return
+        }
+        val previousActive = dock.currentTab
+        val starts = renderer.tabVisualStarts()
+        if (!dock.close(index)) return
+        dockMotion.reorderFrom(starts)
+        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        if (dock.currentTab !== previousActive) {
+            selection.exitMultiSelect()
+            onNavigationChanged()
+        } else {
+            lastActiveTab = dock.currentTab
+            lastActiveIndex = dock.activeIndex
+            revealActiveTab = true
+            if (tabs.size <= 1) dockEditing = false
+            invalidate()
+        }
+    }
+
+    private fun confirmManagedTabUnpin(tab: BrowserTab) {
+        AneDialog.message(
+            activity = host,
+            title = s(R.string.dock_unpin_confirm_title),
+            message = s(R.string.dock_unpin_confirm_message, tab.label),
+            actions = listOf(
+                AneDialogAction(s(R.string.dialog_cancel)),
+                AneDialogAction(s(R.string.dock_unpin_confirm_action), primary = true) {
+                    val index = tabs.indexOfFirst { it === tab }
+                    if (index > 0 && tab.pinned) {
+                        val starts = renderer.tabVisualStarts()
+                        dock.unpin(index)
+                        dockMotion.reorderFrom(starts)
+                        lastActiveTab = dock.currentTab
+                        lastActiveIndex = dock.activeIndex
+                        revealActiveTab = true
+                        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        invalidate()
+                    }
+                }
+            )
+        )
+    }
+
+    private fun onNavigationChanged() {
+        val current = dock.currentTab
+        if (lastActiveTab !== current) {
+            val previousIndex = tabs.indexOfFirst { it === lastActiveTab }
+                .takeIf { it >= 0 }
+                ?: lastActiveIndex.coerceIn(tabs.indices)
+            dockMotion.switchTabs(previousIndex, dock.activeIndex)
+            pendingContentRevealPath = dock.currentDirectory.absolutePath
+        } else if (pendingContentRevealPath != null) {
+            pendingContentRevealPath = dock.currentDirectory.absolutePath
+        }
+        lastActiveTab = current
+        lastActiveIndex = dock.activeIndex
+        scrollY = 0f
+        revealActiveTab = true
+        refresh()
+    }
+
+    private fun changeDockOrder(action: () -> Unit) {
+        val starts = renderer.tabVisualStarts()
+        action()
+        dockMotion.reorderFrom(starts)
+        if (lastActiveTab === dock.currentTab) lastActiveIndex = dock.activeIndex
+        revealActiveTab = true
+        invalidate()
+    }
+
     private fun navigateTo(directory: File) {
         if (!directory.isDirectory || !directory.canRead()) {
             host.toast(host.getString(R.string.cannot_read_directory)); return
         }
         dock.navigateTo(directory)
         sorting.markOpened(directory)
-        selection.exitMultiSelect(); scrollY = 0f; revealActiveTab = true; refresh()
+        selection.exitMultiSelect(); onNavigationChanged()
     }
 
     private fun navigateUp() = currentDirectory.parentFile?.let(::navigateTo) ?: Unit
@@ -625,21 +747,20 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         renderer.restartTabMarquee(index)
         if (dock.switchTo(index)) {
             sorting.markOpened(dock.currentDirectory)
-            selection.exitMultiSelect(); scrollY = 0f; revealActiveTab = true; refresh()
+            selection.exitMultiSelect(); onNavigationChanged()
         }
     }
 
     fun handleBack(): Boolean {
         if (menu.kind != MenuKind.NONE) { menu.close(); return true }
+        if (dockEditing) { dockEditing = false; invalidate(); return true }
         if (dragging || tabDragging) { resetGesture(); return true }
         if (selection.multiSelect) { selection.exitMultiSelect(); return true }
         if (!selection.isEmpty) { selection.clear(); return true }
         val parent = parentForSystemBack() ?: return false
         if (!dock.navigateBackTo(parent)) return false
         sorting.markOpened(dock.currentDirectory)
-        scrollY = 0f
-        revealActiveTab = true
-        refresh()
+        onNavigationChanged()
         return true
     }
 
@@ -700,8 +821,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         if (dock.goBack()) {
             sorting.markOpened(dock.currentDirectory)
             selection.exitMultiSelect()
-            scrollY = 0f
-            refresh()
+            onNavigationChanged()
         }
     }
 
