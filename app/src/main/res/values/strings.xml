@@ -28,6 +28,20 @@
     <string name="sort_symbol" translatable="false">⇅</string>
     <string name="folder_detail">文件夹  ·  %1$s</string>
     <string name="file_detail">%1$s  ·  %2$s</string>
+    <string name="file_detail_with_type">%1$s  ·  %2$s  ·  %3$s</string>
+    <string name="file_grid_detail">%1$s  ·  %2$s</string>
+    <string name="file_type_installer">安装包</string>
+    <string name="file_type_text">文本</string>
+    <string name="file_type_audio">音频</string>
+    <string name="file_type_video">视频</string>
+    <string name="file_type_image">图片</string>
+    <string name="file_type_archive">压缩包</string>
+    <string name="file_type_pdf" translatable="false">PDF</string>
+    <string name="file_type_code">代码</string>
+    <string name="file_type_document">文档</string>
+    <string name="file_type_spreadsheet">表格</string>
+    <string name="file_type_presentation">演示文稿</string>
+    <string name="file_type_generic">文件</string>
     <string name="selected_count">已选择 %1$d 项  ·  点击空白处退出</string>
     <string name="multi_select_count">多选模式  ·  已选择 %1$d 项</string>
     <string name="move_count">移动 %1$d 项</string>

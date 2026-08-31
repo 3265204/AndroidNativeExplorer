@@ -25,6 +25,20 @@
     <string name="sort_symbol" translatable="false">⇅</string>
     <string name="folder_detail">Folder  ·  %1$s</string>
     <string name="file_detail">%1$s  ·  %2$s</string>
+    <string name="file_detail_with_type">%1$s  ·  %2$s  ·  %3$s</string>
+    <string name="file_grid_detail">%1$s  ·  %2$s</string>
+    <string name="file_type_installer">Installer</string>
+    <string name="file_type_text">Text</string>
+    <string name="file_type_audio">Audio</string>
+    <string name="file_type_video">Video</string>
+    <string name="file_type_image">Image</string>
+    <string name="file_type_archive">Archive</string>
+    <string name="file_type_pdf" translatable="false">PDF</string>
+    <string name="file_type_code">Code</string>
+    <string name="file_type_document">Document</string>
+    <string name="file_type_spreadsheet">Spreadsheet</string>
+    <string name="file_type_presentation">Presentation</string>
+    <string name="file_type_generic">File</string>
     <string name="selected_count">%1$d selected  ·  Tap empty space to exit</string>
     <string name="multi_select_count">Multi-select  ·  %1$d selected</string>
     <string name="move_count">Move %1$d items</string>
