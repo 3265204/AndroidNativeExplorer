@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -210,3 +211,7 @@ interface PluginUiProvider {
 val PluginHost.ui: AnePluginUi
     get() = (this as? PluginUiProvider)?.pluginUi
         ?: error("The current host does not provide the ANE UI capability")
+
+/** Applies the host-compatible editor surface without adding a required provider method. */
+fun AnePluginUi.configureTextEditor(editor: EditText) =
+    AneComponents.configureTextEditor(editor, theme)

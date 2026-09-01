@@ -7,6 +7,7 @@ import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -103,6 +104,21 @@ object AneComponents {
         setOnClickListener { onClick() }
     }
 
+    fun configureTextEditor(editor: EditText, theme: AneTheme) {
+        editor.setTextColor(theme.text)
+        editor.setHintTextColor(theme.muted)
+        editor.setBackgroundColor(theme.background)
+        editor.typeface = Typeface.MONOSPACE
+        editor.textSize = AneTypography.editorTextSp(editor.context)
+        editor.gravity = Gravity.TOP or Gravity.START
+        editor.setPadding(
+            editor.context.aneDp(TEXT_EDITOR_HORIZONTAL_PADDING_DP),
+            editor.context.aneDp(TEXT_EDITOR_TOP_PADDING_DP),
+            editor.context.aneDp(TEXT_EDITOR_HORIZONTAL_PADDING_DP),
+            editor.context.aneDp(TEXT_EDITOR_BOTTOM_PADDING_DP)
+        )
+    }
+
     fun navigationButton(
         context: Context,
         theme: AneTheme,
@@ -196,6 +212,99 @@ object AneComponents {
         }
         topBar.addTrailing(position)
         return AneSequenceTopBar(topBar, position)
+    }
+
+    fun mediaSequenceStage(
+        context: Context,
+        theme: AneTheme,
+        navigationLabel: CharSequence,
+        navigationDescription: CharSequence,
+        onNavigate: () -> Unit,
+        navigation: AneMediaSequenceNavigation,
+        stageStyle: AneMediaStageStyle = AneMediaStageStyle.MEDIA,
+        onMoved: (AneMediaDirection) -> Unit
+    ): AneMediaSequenceStage = AneMediaSequenceStage(
+        topBar = sequenceTopBar(
+            context,
+            theme,
+            navigationLabel,
+            navigationDescription,
+            onNavigate
+        ),
+        stage = mediaStage(context, theme, stageStyle),
+        navigation = navigation,
+        attachButton = { container, direction, symbol, description, onClick ->
+            attachMediaSwitchButton(
+                context,
+                container,
+                direction,
+                symbol,
+                description,
+                onClick
+            )
+        },
+        updateButton = ::updateMediaNavigation,
+        onMoved = onMoved
+    )
+
+    fun mediaStage(context: Context): android.widget.FrameLayout =
+        android.widget.FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
+
+    fun mediaStage(
+        context: Context,
+        theme: AneTheme,
+        style: AneMediaStageStyle
+    ): android.widget.FrameLayout = android.widget.FrameLayout(context).apply {
+        setBackgroundColor(
+            when (style) {
+                AneMediaStageStyle.CONTENT -> theme.background
+                AneMediaStageStyle.MEDIA -> Color.BLACK
+            }
+        )
+    }
+
+    fun attachMediaSwitchButton(
+        context: Context,
+        container: android.widget.FrameLayout,
+        direction: AneMediaDirection,
+        symbol: CharSequence,
+        contentDescription: CharSequence,
+        onClick: () -> Unit
+    ): Button = Button(context).apply {
+        text = symbol
+        textSize = MEDIA_SWITCH_TEXT_SP
+        setTextColor(Color.WHITE)
+        this.contentDescription = contentDescription
+        setPadding(0, 0, 0, context.aneDp(MEDIA_SWITCH_BOTTOM_PADDING_DP))
+        background = AneShapes.rounded(
+            Color.argb(MEDIA_SWITCH_BACKGROUND_ALPHA, 18, 22, 29),
+            context.aneDp(MEDIA_SWITCH_RADIUS_DP).toFloat()
+        )
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onClick() }
+        container.addView(
+            this,
+            android.widget.FrameLayout.LayoutParams(
+                context.aneDp(MEDIA_SWITCH_WIDTH_DP),
+                context.aneDp(MEDIA_SWITCH_HEIGHT_DP),
+                when (direction) {
+                    AneMediaDirection.PREVIOUS -> Gravity.START or Gravity.CENTER_VERTICAL
+                    AneMediaDirection.NEXT -> Gravity.END or Gravity.CENTER_VERTICAL
+                }
+            ).apply {
+                if (direction == AneMediaDirection.PREVIOUS) {
+                    leftMargin = context.aneDp(MEDIA_SWITCH_EDGE_MARGIN_DP)
+                } else {
+                    rightMargin = context.aneDp(MEDIA_SWITCH_EDGE_MARGIN_DP)
+                }
+            }
+        )
+    }
+
+    fun updateMediaNavigation(button: Button, enabled: Boolean) {
+        button.isEnabled = enabled
+        button.alpha = if (enabled) 1f else MEDIA_NAVIGATION_DISABLED_ALPHA
     }
 
     fun pageHeader(
@@ -391,6 +500,18 @@ object AneComponents {
         AneTextTone.DANGER -> danger
         AneTextTone.ON_PRIMARY -> Color.WHITE
     }
+
+    private const val MEDIA_SWITCH_TEXT_SP = 32f
+    private const val MEDIA_SWITCH_BOTTOM_PADDING_DP = 3
+    private const val MEDIA_SWITCH_BACKGROUND_ALPHA = 150
+    private const val MEDIA_SWITCH_RADIUS_DP = 22
+    private const val MEDIA_SWITCH_WIDTH_DP = 54
+    private const val MEDIA_SWITCH_HEIGHT_DP = 68
+    private const val MEDIA_SWITCH_EDGE_MARGIN_DP = 12
+    private const val MEDIA_NAVIGATION_DISABLED_ALPHA = .34f
+    private const val TEXT_EDITOR_HORIZONTAL_PADDING_DP = 16
+    private const val TEXT_EDITOR_TOP_PADDING_DP = 14
+    private const val TEXT_EDITOR_BOTTOM_PADDING_DP = 24
 }
 
 class AneTopBar internal constructor(

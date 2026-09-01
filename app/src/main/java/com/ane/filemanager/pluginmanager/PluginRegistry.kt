@@ -4,8 +4,10 @@ import android.text.InputType
 import android.webkit.MimeTypeMap
 import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
+import com.ane.filemanager.core.file.TextFileService
 import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.input.HostPluginInput
+import com.ane.filemanager.plugin.api.file.PluginFileServiceProvider
 import com.ane.filemanager.plugin.api.input.PluginInputProvider
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.PluginUiProvider
@@ -56,12 +58,17 @@ internal class PluginRegistry(
     private val closed = AtomicBoolean(false)
     private var records = emptyList<PluginRecord>()
 
-    private val pluginHost = object : PluginHost, PluginUiProvider, PluginInputProvider {
+    private val pluginHost = object :
+        PluginHost,
+        PluginUiProvider,
+        PluginInputProvider,
+        PluginFileServiceProvider {
         override val activity get() = this@PluginRegistry.activity
         override val systemLocaleTags get() = AppLanguage.systemLanguageTags(activity)
         override val hostLocaleTags get() = AppLanguage.hostLanguageTags(activity)
         override val pluginUi = PluginUiService(activity)
         override val pluginInput = HostPluginInput
+        override val pluginFiles = TextFileService
 
         override fun toast(message: String) = activity.toast(message)
 

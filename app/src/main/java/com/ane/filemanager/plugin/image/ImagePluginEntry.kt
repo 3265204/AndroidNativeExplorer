@@ -1,21 +1,17 @@
 package com.ane.filemanager.plugin.image
 
-import android.content.Intent
-import com.ane.filemanager.plugin.image.ui.ImageActivity
-import com.ane.filemanager.plugin.api.AnePlugin
+import com.ane.filemanager.plugin.api.AneIntentPluginEntry
 import com.ane.filemanager.plugin.api.PluginFile
-import com.ane.filemanager.plugin.api.PluginHost
+import com.ane.filemanager.plugin.image.ui.ImageActivity
+import java.io.File
 
-class ImagePluginEntry : AnePlugin {
-    override fun supports(file: PluginFile) = file.extension in EXTENSIONS
+class ImagePluginEntry : AneIntentPluginEntry(ImageActivity::class.java, ImagePluginFiles::supports)
 
-    override fun open(file: PluginFile, host: PluginHost): Boolean {
-        host.activity.startActivity(Intent(host.activity, ImageActivity::class.java)
-            .putExtra(ImageActivity.EXTRA_FILE_PATH, file.path))
-        return true
-    }
+internal object ImagePluginFiles {
+    private val extensions = setOf(
+        "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "avif"
+    )
 
-    private companion object {
-        val EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "avif")
-    }
+    fun supports(file: PluginFile): Boolean = file.extension.lowercase() in extensions
+    fun accepts(file: File): Boolean = file.isFile && file.extension.lowercase() in extensions
 }

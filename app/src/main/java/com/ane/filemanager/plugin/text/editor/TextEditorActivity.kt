@@ -13,12 +13,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.ane.filemanager.R
+import com.ane.filemanager.core.file.TextFileService
 import com.ane.filemanager.localization.AppLanguage
-import com.ane.filemanager.plugin.text.codec.TextEncoding
-import com.ane.filemanager.plugin.text.codec.TextFileCodec
-import com.ane.filemanager.plugin.text.codec.TextFileTooLargeException
+import com.ane.filemanager.plugin.api.AneIntentPluginEntry
+import com.ane.filemanager.plugin.api.file.PluginTextEncoding
+import com.ane.filemanager.plugin.api.file.PluginTextTooLargeException
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import com.ane.filemanager.plugin.api.ui.AneTheme
+import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
+import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
 import com.ane.filemanager.ui.HostUi
 import java.io.File
 import java.util.concurrent.Executors
@@ -37,7 +40,7 @@ class TextEditorActivity : Activity() {
     private lateinit var editor: InertialEditText
     private lateinit var title: TextView
     private lateinit var saveButton: Button
-    private var encoding = TextEncoding.UTF8
+    private var encoding = PluginTextEncoding.UTF8
     private var dirty = false
     private var revision = 0
     private var loaded = false
@@ -67,14 +70,14 @@ class TextEditorActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        file = intent.getStringExtra(EXTRA_FILE_PATH)?.let(::File) ?: File("")
+        file = intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH)?.let(::File) ?: File("")
         if (!file.isFile) {
             Toast.makeText(this, R.string.text_file_missing, Toast.LENGTH_SHORT).show()
             finish()
             return
         }
         palette = HostUi.theme(this)
-        applyTextEditorSystemBars(palette)
+        applyAneSystemBars(palette)
         buildUi()
         loadFile()
     }
@@ -83,7 +86,7 @@ class TextEditorActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(palette.background)
-            applyTextEditorSystemInsets()
+            applyAneSystemInsets()
         }
         val top = HostUi.topBar(
             context = this,
@@ -123,7 +126,7 @@ class TextEditorActivity : Activity() {
 
     private fun loadFile() {
         worker.execute {
-            val result = runCatching { TextFileCodec.load(file) }
+            val result = runCatching { TextFileService.read(file) }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess {
@@ -135,8 +138,11 @@ class TextEditorActivity : Activity() {
                     updateHeader()
                     handler.post(highlightRunnable)
                 }.onFailure {
-                    val message = if (it is TextFileTooLargeException) R.string.editor_file_too_large
-                    else R.string.editor_load_failed
+                    val message = if (it is PluginTextTooLargeException) {
+                        R.string.editor_file_too_large
+                    } else {
+                        R.string.editor_load_failed
+                    }
                     Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                     finish()
                 }
@@ -173,7 +179,7 @@ class TextEditorActivity : Activity() {
         val savingRevision = revision
         saveButton.isEnabled = false
         worker.execute {
-            val result = runCatching { TextFileCodec.save(file, text, encoding) }
+            val result = runCatching { TextFileService.write(file, text, encoding) }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess {
@@ -234,7 +240,6 @@ class TextEditorActivity : Activity() {
     }
 
     internal companion object {
-        const val EXTRA_FILE_PATH = "text_file_path"
         const val SCROLL_HIGHLIGHT_DEBOUNCE_MS = 140L
         const val EDIT_HIGHLIGHT_DEBOUNCE_MS = 420L
         const val SLOW_HIGHLIGHT_DEBOUNCE_MS = 650L

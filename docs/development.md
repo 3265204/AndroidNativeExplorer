@@ -22,6 +22,7 @@
 | 宿主设置页面与控件编排 | `ui/settings/` |
 | 标签和目录历史 | `navigation/` |
 | 文件创建、复制、删除、撤回 | `operation/` |
+| 文本内容读写、同目录文件序列 | `core/file/` |
 | 鼠标与快捷键 | `input/` |
 | 可选文件内容能力 | `plugin/<plugin-id>/`，并遵循 [插件开发规范](plugins.md) |
 | 文件管理器核心 Android 资源 | `app/src/main/res/` |
@@ -75,6 +76,8 @@
 - 执行器必须有明确生命周期：关闭后拒绝新任务，不强制中断正在进行的文件事务，并屏蔽失效 UI 回调。
 - 新增可逆操作时同步定义 `PendingUndo`；不可逆操作必须在设计说明中写明原因。
 - 更新 UI、选择和撤回栈必须发生在事务成功之后。
+- 文本编码、BOM 检测和保留编码写回统一使用 `TextFileService`；导入插件通过 `host.files` 调用，禁止在插件目录复制 codec。
+- `host.files` 是同步文件能力，必须放进 `host.execute` 或插件自己的受控后台任务，不得在主线程读取或写入文件。
 
 ## 状态与持久化
 
@@ -86,15 +89,17 @@
 
 ## 插件界面与编辑器
 
-- 插件 API 当前保持 v3；`plugin.api.ui` 和 `plugin.api.input` 只声明能力契约与语义模型，宿主分别通过 `PluginUiProvider`、`PluginInputProvider` 提供实现，不得为了封装修改 `PluginHost` ABI。
+- 插件 API 当前保持 v3；`plugin.api.ui` 提供语义模型与可复用标准组件，`plugin.api.input` 和 `plugin.api.file` 通过 provider 提供宿主能力，不得为了封装增加 `PluginHost` 必须实现的新成员。
+- 只需按文件类型启动 Activity 的插件继承 `AneIntentPluginEntry`，不得再次复制 `supports + Intent + EXTRA_FILE_PATH` 样板；入口匹配和 Activity 同目录过滤必须引用插件内同一份格式配置。
 - 导入插件的标准消息、选择、输入、全屏页面、浏览列表和媒体控件必须从 `host.ui` 请求；内置插件 Activity 依赖 `app/ui/HostUi`，不得绕过宿主直接构建另一套公共样式。
 - 插件只能传标题、文案、方向、状态和回调等语义参数。字号、颜色、圆角、透明度、标准边距、控件尺寸和通用动效时长必须位于宿主 UI 实现，不得出现在插件控件构造代码中。
 - Activity 的系统栏和根布局安全区使用 `applyAneSystemBars`、`applyAneSystemInsets`；视频等黑色舞台可明确覆盖导航栏颜色。
-- 图片、视频、音频分别维护 `ImageSequence`、`VideoSequence`、`AudioPlaylist`，不得回收成共享的媒体类型或 Viewer 层。
+- 图片、视频、音频使用 `core/file/SiblingFileSequence` 复用扫描、排序和移动，并通过回调式 `AneMediaSequenceStage` 编排标题、位置和前后项状态；各插件仍自行提供格式过滤器，API 不得暴露 `SiblingFileSequence` 或抽出共享 Viewer 层。
+- 编辑器外围样式使用 `AneComponents.configureTextEditor`/`host.ui.configureTextEditor`，终端默认字号使用 `AneTypography`；插件可以保存自己的字号覆盖值，但不得直接读取宿主 appearance 偏好键。
 - 终端页面通过 `host.ui.page` 和 `populateConsolePage` 进入宿主外壳；PTY 生命周期放在 `TerminalSessionController`，屏幕按键与硬件键都通过 `host.input` 进入宿主输入层，不得在终端插件中重新硬编码控制序列或完整视觉层级。
 - 图片缩放焦点必须保持在双指中心；缩放状态下不触发图片切换。
 - 视频和音频切换后释放旧播放器，保存必要的恢复位置。
-- 文本加载和保存保留原编码及 BOM。
+- 文本加载和保存通过 `TextFileService` 保留原编码及 BOM；脏状态、高亮、缩进和编辑交互留在文本插件。
 - 高亮计算放到后台线程，只处理可见区域附近，并通过 revision/token 丢弃过期结果。
 - Tab 插入四个空格；多行选择支持统一缩进和 Shift+Tab 反缩进。
 

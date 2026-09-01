@@ -1,21 +1,20 @@
 package com.ane.filemanager.plugin.audio
 
-import android.content.Intent
-import com.ane.filemanager.plugin.audio.ui.AudioPlayerActivity
-import com.ane.filemanager.plugin.api.AnePlugin
+import com.ane.filemanager.plugin.api.AneIntentPluginEntry
 import com.ane.filemanager.plugin.api.PluginFile
-import com.ane.filemanager.plugin.api.PluginHost
+import com.ane.filemanager.plugin.audio.ui.AudioPlayerActivity
+import java.io.File
 
-class AudioPluginEntry : AnePlugin {
-    override fun supports(file: PluginFile) = file.extension in EXTENSIONS
+class AudioPluginEntry : AneIntentPluginEntry(
+    AudioPlayerActivity::class.java,
+    AudioPluginFiles::supports
+)
 
-    override fun open(file: PluginFile, host: PluginHost): Boolean {
-        host.activity.startActivity(Intent(host.activity, AudioPlayerActivity::class.java)
-            .putExtra(AudioPlayerActivity.EXTRA_FILE_PATH, file.path))
-        return true
-    }
+internal object AudioPluginFiles {
+    private val extensions = setOf(
+        "mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "amr", "mid", "midi"
+    )
 
-    private companion object {
-        val EXTENSIONS = setOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "amr", "mid", "midi")
-    }
+    fun supports(file: PluginFile): Boolean = file.extension.lowercase() in extensions
+    fun accepts(file: File): Boolean = file.isFile && file.extension.lowercase() in extensions
 }

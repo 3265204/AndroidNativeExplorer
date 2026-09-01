@@ -4,9 +4,9 @@ ANE 使用普通 ZIP 作为应用内插件安装。用户先在 ANE 中进入 ZI
 
 ## 1. 边界与目录
 
-- 公共 ABI、UI 契约和输入契约都位于独立 `plugin-api` 模块，分别使用 `plugin.api`、`plugin.api.ui` 与 `plugin.api.input` 包；宿主实现位于 `app/ui` 和 `app/input`，能力封装不改变当前 v3 协议。
+- 公共 ABI、UI、输入和文件能力契约都位于独立 `plugin-api` 模块，分别使用 `plugin.api`、`plugin.api.ui`、`plugin.api.input` 与 `plugin.api.file` 包；宿主实现位于 `app/ui`、`app/input` 和 `app/core/file`，能力封装不改变当前 v3 协议。
 - 内置插件分别位于 `plugin/archive`、`plugin/text`、`plugin/audio`、`plugin/image`、`plugin/video`、`plugin/terminal`。
-- 每个插件自行拥有扩展名、MIME、文件签名探测、解析、密码、目录序列、界面和运行期资源。
+- 每个插件自行拥有扩展名、MIME、文件签名探测、解析、密码、媒体行为、界面和运行期资源；宿主只提供无媒体类型的同目录序列实现。
 - `plugin` 下禁止建立 `shared`、`support`、`runtime` 或 `viewer` 总目录；插件之间不得共享文件类型总表或隐式运行层。
 - 新增内置插件只添加实现类和 `assets/ane-plugins/<id>.json`，不得编辑 `PluginRegistry` 中的类型列表。
 
@@ -35,6 +35,25 @@ class MyPlugin : AnePlugin {
 ```
 
 `supports` 由插件自行实现，允许扩展名、MIME 或文件头探测。多个插件匹配时，长按菜单合并所有动作；双击按 manifest 的 `priority` 从高到低尝试，直到某个插件返回 `true`。
+
+只需按文件类型启动一个 Activity 时，使用配置驱动入口，文件路径 extra 由 API 统一：
+
+```kotlin
+class ImagePlugin : AneIntentPluginEntry(
+    ImageActivity::class.java,
+    ImageFiles::supports
+)
+
+object ImageFiles {
+    private val extensions = setOf("jpg", "png", "webp")
+    fun supports(file: PluginFile) = file.extension.lowercase() in extensions
+}
+
+// ImageActivity
+val path = intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH)
+```
+
+入口匹配和 Activity 的同目录过滤必须引用同一个插件格式配置，禁止维护两份扩展名集合。需要 selection、图标、目录动作或自定义打开流程的插件继续直接实现相应接口。
 
 插件若要为加号菜单贡献基于当前选区的动作，可额外实现 `PluginSelectionActionProvider`。宿主只负责把单选或多选文件传给已启用插件，不识别具体业务类型：
 
@@ -131,7 +150,45 @@ val next = host.ui.attachMediaSwitchButton(
 
 插件不得自行指定该按钮的 `textSize`、ARGB、圆角、尺寸、边距或禁用透明度。导入插件优先使用 `host.ui.page`/`browserPage` 挂载内容；内置插件 Activity 使用宿主 `HostUi`。自定义画布、终端模拟器、代码高亮、媒体解码和缩放算法等领域组件可以继续使用原生 View，但其外围控件仍由宿主提供。
 
+同目录媒体界面使用 `AneMediaSequenceStage`，只向 API 传回调，不传宿主内部序列类型：
+
+```kotlin
+val sequenceStage = host.ui.mediaSequenceStage(
+    context = host.activity,
+    navigationLabel = strings.backSymbol,
+    navigationDescription = strings.back,
+    onNavigate = ::close,
+    navigation = AneMediaSequenceNavigation(
+        currentTitle = { sequence.currentName },
+        positionLabel = { sequence.positionLabel },
+        hasPrevious = { sequence.hasPrevious },
+        hasNext = { sequence.hasNext },
+        moveBy = { delta -> sequence.moveBy(delta) }
+    ),
+    onMoved = ::showCurrent
+)
+```
+
+该组件统一标题、位置标签、前后项禁用状态和移动调用，媒体解码、播放、转场和序列实际类型仍由插件决定。文本编辑器可调用 `host.ui.configureTextEditor(editor)`；终端类自定义视图可用 `AneTypography.terminalTextSp(context)` 取得与宿主外观设置一致的默认字号。
+
 终端类插件的按键序列通过 `PluginHost.input` 请求。插件只传 `PluginTerminalKey` 或 Android 键位状态，控制字节、xterm 修饰符和 Alt 前缀由宿主输入层生成；屏幕键和硬件键不得维护两份映射。
+
+### v3 文件内容能力
+
+文本内容通过 `PluginHost.files` 读取和写回。宿主负责编码/BOM 检测及保存，插件只保存返回的编码枚举：
+
+```kotlin
+import com.ane.filemanager.plugin.api.file.files
+
+host.execute("读取文本", {
+    val document = host.files.readText(file)
+    val editedText = document.text // 此处替换为插件处理后的文本。
+    host.files.writeText(file, editedText, document.encoding)
+    PluginTaskResult(success = true)
+})
+```
+
+`readText`/`writeText` 是同步能力，不得直接在主线程调用。超过默认大小限制时抛出 `PluginTextTooLargeException`。当前后端仍使用普通应用权限访问路径，但插件不再自行 `File(path)` 读取文本，为以后切换文件后端保留宿主接入点。
 
 ## 3. plugin.json
 
@@ -184,7 +241,7 @@ demo-plugin.zip
 gradle :plugin-api:assembleRelease
 ```
 
-产物为 `plugin-api/build/outputs/aar/plugin-api-release.aar`，其中包含运行、UI 和输入能力契约。插件工程以 `compileOnly` 引用它，生成的 `classes.dex` 不得包含 `plugin-api` 副本。打包流程必须可复现，并在 Dex 生成后计算 SHA-256。插件 ZIP 仍只包含 manifest 与 Dex；原生 PTY 库、视觉实现和键盘映射均由宿主 APK 提供，不需要也不允许插件重复携带。
+产物为 `plugin-api/build/outputs/aar/plugin-api-release.aar`，其中包含运行、UI、输入和文件能力契约。插件工程以 `compileOnly` 引用它，生成的 `classes.dex` 不得包含 `plugin-api` 副本。打包流程必须可复现，并在 Dex 生成后计算 SHA-256。插件 ZIP 仍只包含 manifest 与 Dex；原生 PTY 库、视觉实现、键盘映射和文件能力实现均由宿主 APK 提供，不需要也不允许插件重复携带。
 
 ## 5. 插件多语言规范
 

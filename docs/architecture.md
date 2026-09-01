@@ -15,10 +15,11 @@ MainActivity
    ├─ ui/appearance                 主题和显示参数
    ├─ navigation                    标签、历史和持久化
    ├─ operation                     文件事务、错误和撤回
+   ├─ core/file                     文本文件读写与同目录文件序列
    └─ input                         鼠标与桌面快捷键解析
 
 pluginmanager                     只负责安装、发现、启停与调用边界
-├─ plugin-api                      稳定 ABI，以及 UI/输入宿主能力契约
+├─ plugin-api                      稳定 ABI，以及 UI/输入/文件宿主能力契约
 ├─ plugin/archive/{代码,res}        归档解压、密码与自有文案
 ├─ plugin/image/{代码,res}          图片查看、缩放与自有文案
 ├─ plugin/video/{代码,res}          视频播放、目录切换与自有文案
@@ -48,11 +49,17 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 
 ### 宿主 UI 与输入能力
 
-`plugin-api/src/main/.../api/ui` 声明宿主 UI 能力和语义模型，不建立第二个 SDK 模块，也不改变 `PluginApi.VERSION = 3`。`PluginHost.ui` 通过 `PluginUiProvider` 取得宿主实现；当前实现位于 `app/ui/PluginUiService`，视觉常量与实际控件构建集中在 `app/ui/HostUi`。因此插件依赖的是 API 契约，最终颜色、字号、控件间距、窗口外壳和动效策略仍由宿主决定。
+`plugin-api/src/main/.../api/ui` 声明宿主 UI 能力、语义模型和可直接复用的标准组件，不建立第二个 SDK 模块，也不改变 `PluginApi.VERSION = 3`。`PluginHost.ui` 通过 `PluginUiProvider` 取得当前宿主页面实现；通用控件、窗口适配、媒体序列编排和字体策略位于 API，宿主页面外壳与运行期组合位于 `app/ui/PluginUiService` 和 `HostUi`。因此插件依赖的是 API 契约，颜色、字号、控件间距和通用动效不会散落回插件。
 
-插件只提交语义参数，例如页面标题、面包屑、上一项/下一项、按键动作和无障碍文案。`browserPage`、媒体切换按钮、播放控制、终端按键栏及编辑器表面均由宿主完成具体布局。插件业务代码可以保存返回的 View 引用来更新状态，但不得重新设置宿主组件的字号、语义颜色、圆角、透明度或标准内边距。自定义画布、终端模拟器、代码高亮和缩放算法等领域实现仍留在插件。
+插件只提交语义参数，例如页面标题、面包屑、上一项/下一项、按键动作和无障碍文案。`browserPage`、媒体切换按钮、播放控制、终端按键栏及编辑器表面均由公共 UI 能力完成具体布局。`AneMediaSequenceStage` 通过回调更新标题、位置、前后项状态并编排移动，不暴露宿主 `SiblingFileSequence`；`AneTypography` 统一编辑器和终端的等宽字体策略。插件业务代码可以保存返回的 View 引用来更新状态，但不得重新设置公共组件的字号、语义颜色、圆角、透明度或标准内边距。自定义画布、终端模拟器、代码高亮和缩放算法等领域实现仍留在插件。
 
-`plugin-api/.../api/input` 同样只声明 `AnePluginInput`。`PluginHost.input` 通过 `PluginInputProvider` 进入 `app/input/HostPluginInput`，屏幕终端键与硬件键使用同一宿主映射。两个 provider 都由当前 `PluginRegistry` 的宿主对象实现，没有向 `PluginHost` 接口增加抽象成员，因此仍保持 v3 ABI。
+`plugin-api/.../api/input` 同样只声明 `AnePluginInput`。`PluginHost.input` 通过 `PluginInputProvider` 进入 `app/input/HostPluginInput`，屏幕终端键与硬件键使用同一宿主映射。这些 provider 都由当前 `PluginRegistry` 的宿主对象实现，没有向 `PluginHost` 接口增加抽象成员，因此仍保持 v3 ABI。
+
+### 文件内容能力
+
+`plugin-api/.../api/file` 声明 `PluginHost.files`。当前宿主通过 `PluginFileServiceProvider` 提供 `core/file/TextFileService`，统一负责 UTF-8、UTF-8 BOM、UTF-16LE、UTF-16BE 的检测、大小限制、读取和保留编码写回。插件不再自行实现 BOM 探测或直接创建 `FileOutputStream`；导入插件应在 `host.execute` 的后台任务中调用该同步能力。
+
+`core/file/SiblingFileSequence` 是宿主内部共享业务实现：它扫描父目录、按本地 Collator 排序、定位当前文件并提供 previous/next。图片、音频和视频插件只提供自己的格式过滤器；该类不公开媒体类型，也没有并入第三方插件 ABI。
 
 ### menu
 
@@ -102,12 +109,14 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 
 文件管理核心不引用具体插件类。`pluginmanager/PluginRegistry` 扫描内置 assets 清单和应用私有目录中的导入清单，通过公共 `plugin-api` 实例化插件。管理层不包含格式判断、播放列表或插件界面；这些运行逻辑全部留在对应插件目录内。
 
+只按文件过滤并启动一个 Activity 的插件使用 `AneIntentPluginEntry`。API 统一 Intent extra 和启动流程，插件只保留目标 Activity 与格式过滤配置；格式集合是插件内的单一事实来源，入口匹配和同目录导航不得各自复制一份。
+
 当前随应用提供的插件包括：
 
-- 图片进入 `image/ui/ImageActivity`，图片序列和缩放均由 image 插件负责。
-- 视频进入 `video/ui/VideoPlayerActivity`，同目录序列由 video 插件负责。
-- 音频进入 `audio/ui/AudioPlayerActivity`，播放列表和进度由 audio 插件负责。
-- 文本进入 `TextEditorActivity`，支持编码识别、保存、惯性滚动、缩进和代码高亮。
+- 图片进入 `image/ui/ImageActivity`，格式过滤和缩放由 image 插件负责，同目录导航使用 `SiblingFileSequence`。
+- 视频进入 `video/ui/VideoPlayerActivity`，播放由 video 插件负责，同目录导航使用 `SiblingFileSequence`。
+- 音频进入 `audio/ui/AudioPlayerActivity`，播放与进度由 audio 插件负责，同目录导航使用 `SiblingFileSequence`。
+- 文本进入 `TextEditorActivity`，通过 `TextFileService` 读取和保留编码写回；高亮、惯性滚动和缩进仍由 text 插件负责。
 - 终端由 `TerminalConsoleDialog` 把领域内容提交给 `PluginHost.ui`；`TerminalSessionController` 管理 PTY 生命周期，屏幕键和硬件键都通过 `PluginHost.input` 进入宿主 `HostPluginInput`，`TerminalView` 只负责终端绘制、模拟器和输入连接。
 
 各插件通过 `plugin-api` 的 UI 包统一适配状态栏、导航栏、刘海、DeX 任务栏、主题和标准弹窗，并在自己的 `res/values` 维护文案。公共 UI 只提供视觉语言，不拥有播放器、编辑器、压缩浏览等业务组件，也不建立 `plugin/shared` 一类隐式运行层。

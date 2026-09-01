@@ -3,7 +3,6 @@ package com.ane.filemanager.ui
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
-import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -19,15 +18,14 @@ import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import com.ane.filemanager.plugin.api.ui.AneMediaDirection
 import com.ane.filemanager.plugin.api.ui.AneMediaPlaybackControls
 import com.ane.filemanager.plugin.api.ui.AneMediaArtwork
-import com.ane.filemanager.plugin.api.ui.AneSequenceTopBar
+import com.ane.filemanager.plugin.api.ui.AneMediaSequenceNavigation
+import com.ane.filemanager.plugin.api.ui.AneMediaSequenceStage
+import com.ane.filemanager.plugin.api.ui.AneMediaStageStyle
 import com.ane.filemanager.plugin.api.ui.AneShapes
 import com.ane.filemanager.plugin.api.ui.AneTextRole
 import com.ane.filemanager.plugin.api.ui.AneTextTone
 import com.ane.filemanager.plugin.api.ui.AneTheme
 import com.ane.filemanager.plugin.api.ui.AneTopBar
-import com.ane.filemanager.plugin.api.ui.applyAneMediaSystemBars
-import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
-import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
 import com.ane.filemanager.plugin.api.ui.aneDp
 import kotlin.math.min
 
@@ -35,11 +33,6 @@ import kotlin.math.min
 internal object HostUi {
     fun theme(context: Context): AneTheme = AneTheme.resolve(context)
     fun theme(context: Context, dark: Boolean): AneTheme = AneTheme.resolve(context, dark)
-
-    fun applySystemBars(activity: Activity, theme: AneTheme) = activity.applyAneSystemBars(theme)
-    fun applyMediaSystemBars(activity: Activity, theme: AneTheme) =
-        activity.applyAneMediaSystemBars(theme)
-    fun applySystemInsets(view: View) = view.applyAneSystemInsets()
 
     fun topBar(
         context: Context,
@@ -73,32 +66,27 @@ internal object HostUi {
     ) = AneDialog.message(activity, title, message, actions, theme)
 
     fun configureTextEditor(editor: EditText, theme: AneTheme) {
-        editor.setTextColor(theme.text)
-        editor.setHintTextColor(theme.muted)
-        editor.setBackgroundColor(theme.background)
-        editor.typeface = Typeface.MONOSPACE
-        editor.textSize = TEXT_EDITOR_TEXT_SP
-        editor.gravity = Gravity.TOP or Gravity.START
-        editor.setPadding(
-            editor.context.aneDp(TEXT_EDITOR_HORIZONTAL_PADDING_DP),
-            editor.context.aneDp(TEXT_EDITOR_TOP_PADDING_DP),
-            editor.context.aneDp(TEXT_EDITOR_HORIZONTAL_PADDING_DP),
-            editor.context.aneDp(TEXT_EDITOR_BOTTOM_PADDING_DP)
-        )
+        AneComponents.configureTextEditor(editor, theme)
     }
 
-    fun sequenceTopBar(
+    fun mediaSequenceStage(
         context: Context,
         theme: AneTheme,
         navigationLabel: CharSequence,
         navigationDescription: CharSequence,
-        onNavigate: () -> Unit
-    ): AneSequenceTopBar = AneComponents.sequenceTopBar(
+        onNavigate: () -> Unit,
+        navigation: AneMediaSequenceNavigation,
+        stageStyle: AneMediaStageStyle = AneMediaStageStyle.MEDIA,
+        onMoved: (AneMediaDirection) -> Unit
+    ): AneMediaSequenceStage = AneComponents.mediaSequenceStage(
         context,
         theme,
         navigationLabel,
         navigationDescription,
-        onNavigate
+        onNavigate,
+        navigation,
+        stageStyle,
+        onMoved
     )
 
     fun text(
@@ -116,37 +104,14 @@ internal object HostUi {
         symbol: CharSequence,
         contentDescription: CharSequence,
         onClick: () -> Unit
-    ): Button = Button(context).apply {
-        text = symbol
-        textSize = MEDIA_SWITCH_TEXT_SP
-        setTextColor(Color.WHITE)
-        this.contentDescription = contentDescription
-        setPadding(0, 0, 0, context.aneDp(MEDIA_SWITCH_BOTTOM_PADDING_DP))
-        background = AneShapes.rounded(
-            Color.argb(MEDIA_SWITCH_BACKGROUND_ALPHA, 18, 22, 29),
-            context.aneDp(MEDIA_SWITCH_RADIUS_DP).toFloat()
-        )
-        isClickable = true
-        isFocusable = true
-        setOnClickListener { onClick() }
-        container.addView(
-            this,
-            FrameLayout.LayoutParams(
-                context.aneDp(MEDIA_SWITCH_WIDTH_DP),
-                context.aneDp(MEDIA_SWITCH_HEIGHT_DP),
-                when (direction) {
-                    AneMediaDirection.PREVIOUS -> Gravity.START or Gravity.CENTER_VERTICAL
-                    AneMediaDirection.NEXT -> Gravity.END or Gravity.CENTER_VERTICAL
-                }
-            ).apply {
-                if (direction == AneMediaDirection.PREVIOUS) {
-                    leftMargin = context.aneDp(MEDIA_SWITCH_EDGE_MARGIN_DP)
-                } else {
-                    rightMargin = context.aneDp(MEDIA_SWITCH_EDGE_MARGIN_DP)
-                }
-            }
-        )
-    }
+    ): Button = AneComponents.attachMediaSwitchButton(
+        context,
+        container,
+        direction,
+        symbol,
+        contentDescription,
+        onClick
+    )
 
     fun mediaPlaybackControls(
         context: Context,
@@ -247,9 +212,7 @@ internal object HostUi {
         root.setBackgroundColor(Color.BLACK)
     }
 
-    fun mediaStage(context: Context) = FrameLayout(context).apply {
-        setBackgroundColor(Color.BLACK)
-    }
+    fun mediaStage(context: Context) = AneComponents.mediaStage(context)
 
     fun attachMediaProgress(context: Context, container: FrameLayout): ProgressBar =
         ProgressBar(context).also { progress ->
@@ -264,8 +227,7 @@ internal object HostUi {
         }
 
     fun updateMediaNavigation(button: Button, enabled: Boolean) {
-        button.isEnabled = enabled
-        button.alpha = if (enabled) 1f else MEDIA_NAVIGATION_DISABLED_ALPHA
+        AneComponents.updateMediaNavigation(button, enabled)
     }
 
     fun animateMediaExit(
@@ -317,13 +279,7 @@ internal object HostUi {
         setOnClickListener { onClick() }
     }
 
-    private const val MEDIA_SWITCH_TEXT_SP = 32f
     private const val MEDIA_SWITCH_BOTTOM_PADDING_DP = 3
-    private const val MEDIA_SWITCH_BACKGROUND_ALPHA = 150
-    private const val MEDIA_SWITCH_RADIUS_DP = 22
-    private const val MEDIA_SWITCH_WIDTH_DP = 54
-    private const val MEDIA_SWITCH_HEIGHT_DP = 68
-    private const val MEDIA_SWITCH_EDGE_MARGIN_DP = 12
     private const val MEDIA_PLAYBACK_ROW_HEIGHT_DP = 68
     private const val MEDIA_TRANSPORT_WIDTH_DP = 72
     private const val MEDIA_TRANSPORT_HEIGHT_DP = 64
@@ -339,13 +295,8 @@ internal object HostUi {
     private const val MEDIA_CONTROLS_TOP_PADDING_DP = 6
     private const val MEDIA_CONTROLS_BOTTOM_PADDING_DP = 20
     private const val MEDIA_PROGRESS_SIZE_DP = 48
-    private const val MEDIA_NAVIGATION_DISABLED_ALPHA = .34f
     private const val MEDIA_EXIT_DISTANCE_RATIO = .16f
     private const val MEDIA_ENTER_DISTANCE_RATIO = .12f
     private const val MEDIA_EXIT_DURATION_MS = 110L
     private const val MEDIA_ENTER_DURATION_MS = 150L
-    private const val TEXT_EDITOR_TEXT_SP = 15f
-    private const val TEXT_EDITOR_HORIZONTAL_PADDING_DP = 16
-    private const val TEXT_EDITOR_TOP_PADDING_DP = 14
-    private const val TEXT_EDITOR_BOTTOM_PADDING_DP = 24
 }

@@ -7,6 +7,7 @@ import com.ane.filemanager.R
 import com.ane.filemanager.plugin.api.PluginHost
 import com.ane.filemanager.plugin.api.input.input
 import com.ane.filemanager.plugin.api.ui.AnePluginPage
+import com.ane.filemanager.plugin.api.ui.AneTypography
 import com.ane.filemanager.plugin.api.ui.ui
 import java.io.File
 
@@ -65,10 +66,8 @@ internal class TerminalConsoleDialog(
     }
 
     private fun buildTerminal(): TerminalView {
-        val appTextSp = activity.getSharedPreferences("appearance", 0).getInt("textSp", 16)
-        val defaultTextSp = (appTextSp - 2).coerceIn(11, 16)
         val textSp = terminalPreferences()
-            .getInt(PREFERENCE_FONT_SP, defaultTextSp)
+            .getInt(PREFERENCE_FONT_SP, AneTypography.terminalTextSp(activity))
             .coerceIn(10, 22)
         return TerminalView(activity, ui.theme, input, textSp)
     }

@@ -9,22 +9,26 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.TextView
 import android.widget.Toast
 import com.ane.filemanager.R
+import com.ane.filemanager.core.file.SiblingFileSequence
 import com.ane.filemanager.localization.AppLanguage
+import com.ane.filemanager.plugin.api.AneIntentPluginEntry
 import com.ane.filemanager.plugin.api.ui.AneMediaDirection
-import com.ane.filemanager.plugin.image.ImageSequence
+import com.ane.filemanager.plugin.api.ui.AneMediaSequenceNavigation
+import com.ane.filemanager.plugin.api.ui.AneMediaSequenceStage
+import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
+import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
+import com.ane.filemanager.plugin.image.ImagePluginFiles
 import com.ane.filemanager.ui.HostUi
 import java.io.File
 
 class ImageActivity : Activity() {
     private var bitmap: Bitmap? = null
-    private lateinit var playlist: ImageSequence
+    private lateinit var playlist: SiblingFileSequence
+    private lateinit var sequenceStage: AneMediaSequenceStage
     private lateinit var imageView: ZoomableImageView
     private lateinit var progress: ProgressBar
-    private lateinit var titleLabel: TextView
-    private lateinit var position: TextView
     private var loadGeneration = 0
     private var switching = false
 
@@ -34,40 +38,41 @@ class ImageActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        val file = (state?.getString(STATE_PATH) ?: intent.getStringExtra(EXTRA_FILE_PATH))?.let(::File)
+        val file = (state?.getString(STATE_PATH)
+            ?: intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH))?.let(::File)
         if (file == null || !file.isFile) {
             Toast.makeText(this, R.string.image_file_missing, Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-        playlist = ImageSequence.create(file, ::accepts)
+        playlist = SiblingFileSequence.create(file, ImagePluginFiles::accepts)
         val palette = HostUi.theme(this)
-        applyImageSystemBars(palette)
+        applyAneSystemBars(palette)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(palette.background)
-            applyImageSystemInsets()
+            applyAneSystemInsets()
         }
-        val top = HostUi.sequenceTopBar(
+        sequenceStage = HostUi.mediaSequenceStage(
             context = this,
             theme = palette,
             navigationLabel = getString(R.string.image_back_symbol),
             navigationDescription = getString(R.string.image_screen_back),
-            onNavigate = ::finish
+            onNavigate = ::finish,
+            navigation = sequenceNavigation(),
+            onMoved = ::animateImageChange
         )
-        titleLabel = top.title
-        position = top.position
 
-        val stage = HostUi.mediaStage(this)
+        val stage = sequenceStage.stage
         imageView = ZoomableImageView(this)
         imageView.onSwipeLeft = { switchImage(1) }
         imageView.onSwipeRight = { switchImage(-1) }
         stage.addView(imageView, android.widget.FrameLayout.LayoutParams(-1, -1))
         progress = HostUi.attachMediaProgress(this, stage)
-        top.attachTo(root)
-        root.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
+        sequenceStage.attachTo(root)
         setContentView(root)
+        sequenceStage.refresh()
         loadImage(playlist.current, null)
     }
 
@@ -85,22 +90,22 @@ class ImageActivity : Activity() {
 
     private fun switchImage(delta: Int) {
         if (switching || imageView.isZoomed) return
-        val file = playlist.moveBy(delta) ?: return
+        sequenceStage.moveBy(delta)
+    }
+
+    private fun animateImageChange(direction: AneMediaDirection) {
         switching = true
         val stageWidth = imageView.width.coerceAtLeast(resources.displayMetrics.widthPixels)
-        val direction = if (delta > 0) AneMediaDirection.NEXT else AneMediaDirection.PREVIOUS
         HostUi.animateMediaExit(imageView, direction, stageWidth) {
             imageView.setImageDrawable(null)
             bitmap?.recycle()
             bitmap = null
-            loadImage(file, direction)
+            loadImage(playlist.current, direction)
         }
     }
 
     private fun loadImage(file: File, direction: AneMediaDirection?) {
         val generation = ++loadGeneration
-        titleLabel.text = file.name
-        position.text = playlist.positionLabel
         progress.visibility = android.view.View.VISIBLE
         Thread {
             val loaded = try { decodeSampled(file, 4096) } catch (_: Exception) { null }
@@ -181,10 +186,15 @@ class ImageActivity : Activity() {
         } catch (_: Exception) { 0 }
     }
 
+    private fun sequenceNavigation() = AneMediaSequenceNavigation(
+        currentTitle = { playlist.current.name },
+        positionLabel = { playlist.positionLabel },
+        hasPrevious = { playlist.hasPrevious },
+        hasNext = { playlist.hasNext },
+        moveBy = { playlist.moveBy(it) != null }
+    )
+
     internal companion object {
-        const val EXTRA_FILE_PATH = "image_file_path"
-        val EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "avif")
-        fun accepts(file: File) = file.isFile && file.extension.lowercase() in EXTENSIONS
         const val STATE_PATH = "image_path"
     }
 }

@@ -13,17 +13,23 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import com.ane.filemanager.R
+import com.ane.filemanager.core.file.SiblingFileSequence
 import com.ane.filemanager.localization.AppLanguage
-import com.ane.filemanager.plugin.audio.AudioPlaylist
+import com.ane.filemanager.plugin.api.AneIntentPluginEntry
+import com.ane.filemanager.plugin.api.ui.AneMediaSequenceNavigation
+import com.ane.filemanager.plugin.api.ui.AneMediaSequenceStage
+import com.ane.filemanager.plugin.api.ui.AneMediaStageStyle
 import com.ane.filemanager.plugin.api.ui.AneTextRole
 import com.ane.filemanager.plugin.api.ui.AneTextTone
+import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
+import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
+import com.ane.filemanager.plugin.audio.AudioPluginFiles
 import com.ane.filemanager.ui.HostUi
 import java.io.File
 import java.util.Locale
@@ -36,9 +42,8 @@ class AudioPlayerActivity : Activity() {
     }
     private var player: MediaPlayer? = null
     private var artwork: Bitmap? = null
-    private lateinit var playlist: AudioPlaylist
-    private lateinit var titleLabel: TextView
-    private lateinit var positionLabel: TextView
+    private lateinit var playlist: SiblingFileSequence
+    private lateinit var sequenceStage: AneMediaSequenceStage
     private lateinit var albumView: ImageView
     private lateinit var noteView: TextView
     private lateinit var playButton: Button
@@ -68,33 +73,35 @@ class AudioPlayerActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        val file = (state?.getString(STATE_PATH) ?: intent.getStringExtra(EXTRA_FILE_PATH))?.let(::File)
+        val file = (state?.getString(STATE_PATH)
+            ?: intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH))?.let(::File)
         if (file == null || !file.isFile) {
             Toast.makeText(this, R.string.audio_file_missing, Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-        playlist = AudioPlaylist.create(file, ::accepts)
+        playlist = SiblingFileSequence.create(file, AudioPluginFiles::accepts)
         resumePosition = state?.getInt(STATE_POSITION) ?: 0
         val palette = HostUi.theme(this)
-        applyAudioSystemBars(palette)
+        applyAneSystemBars(palette)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(palette.background)
-            applyAudioSystemInsets()
+            applyAneSystemInsets()
         }
-        val top = HostUi.sequenceTopBar(
+        sequenceStage = HostUi.mediaSequenceStage(
             context = this,
             theme = palette,
             navigationLabel = getString(R.string.audio_back_symbol),
             navigationDescription = getString(R.string.audio_screen_back),
-            onNavigate = ::finish
+            onNavigate = ::finish,
+            navigation = sequenceNavigation(),
+            stageStyle = AneMediaStageStyle.CONTENT,
+            onMoved = { switchAudio() }
         )
-        titleLabel = top.title
-        positionLabel = top.position
 
-        val stage = FrameLayout(this)
+        val stage = sequenceStage.stage
         val artworkViews = HostUi.attachMediaArtwork(
             this,
             palette,
@@ -147,27 +154,27 @@ class AudioPlayerActivity : Activity() {
             playDescription = getString(R.string.audio_play),
             nextSymbol = getString(R.string.audio_next_symbol),
             nextDescription = getString(R.string.audio_next),
-            onPrevious = { switchAudio(-1) },
+            onPrevious = { sequenceStage.moveBy(-1) },
             onPlay = ::togglePlayback,
-            onNext = { switchAudio(1) }
+            onNext = { sequenceStage.moveBy(1) }
         )
         previousButton = playback.previous
         playButton = playback.play
         nextButton = playback.next
+        sequenceStage.bindNavigationButtons(previousButton, nextButton)
         controls.addView(times, LinearLayout.LayoutParams(-1, -2))
         controls.addView(seekBar, LinearLayout.LayoutParams(-1, -2))
         controls.addView(playback.view, LinearLayout.LayoutParams(-1, -2))
-        top.attachTo(root)
-        root.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
+        sequenceStage.attachTo(root)
         root.addView(controls, LinearLayout.LayoutParams(-1, -2))
         setContentView(root)
 
+        sequenceStage.refresh()
         showCurrentAudio()
         handler.post(progressUpdate)
     }
 
-    private fun switchAudio(delta: Int) {
-        if (playlist.moveBy(delta) == null) return
+    private fun switchAudio() {
         resumePosition = 0
         showCurrentAudio()
     }
@@ -188,17 +195,17 @@ class AudioPlayerActivity : Activity() {
         durationLabel.setText(R.string.audio_zero_time)
         playButton.isEnabled = false
         updatePlayButton(false)
-        titleLabel.text = playlist.current.name
-        positionLabel.text = playlist.positionLabel
-        updateNavigation()
         loadArtwork(playlist.current)
         preparePlayer(playlist.current)
     }
 
-    private fun updateNavigation() {
-        HostUi.updateMediaNavigation(previousButton, playlist.hasPrevious)
-        HostUi.updateMediaNavigation(nextButton, playlist.hasNext)
-    }
+    private fun sequenceNavigation() = AneMediaSequenceNavigation(
+        currentTitle = { playlist.current.name },
+        positionLabel = { playlist.positionLabel },
+        hasPrevious = { playlist.hasPrevious },
+        hasNext = { playlist.hasNext },
+        moveBy = { playlist.moveBy(it) != null }
+    )
 
     private fun preparePlayer(file: File) {
         player = try { MediaPlayer().apply {
@@ -317,9 +324,6 @@ class AudioPlayerActivity : Activity() {
     }
 
     internal companion object {
-        const val EXTRA_FILE_PATH = "audio_file_path"
-        val EXTENSIONS = setOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "amr", "mid", "midi")
-        fun accepts(file: File) = file.isFile && file.extension.lowercase() in EXTENSIONS
         const val PROGRESS_UPDATE_INTERVAL_MS = 250L
         const val STATE_POSITION = "audio_position"
         const val STATE_PATH = "audio_path"
