@@ -4,7 +4,7 @@ ANE 使用普通 ZIP 作为应用内插件安装。用户先在 ANE 中进入 ZI
 
 ## 1. 边界与目录
 
-- 公共 ABI 位于独立 `plugin-api` 模块；安装、发现和启停位于 `pluginmanager`，不伪装成一个插件实现或运行层。
+- 公共 ABI、UI 契约和输入契约都位于独立 `plugin-api` 模块，分别使用 `plugin.api`、`plugin.api.ui` 与 `plugin.api.input` 包；宿主实现位于 `app/ui` 和 `app/input`，能力封装不改变当前 v3 协议。
 - 内置插件分别位于 `plugin/archive`、`plugin/text`、`plugin/audio`、`plugin/image`、`plugin/video`、`plugin/terminal`。
 - 每个插件自行拥有扩展名、MIME、文件签名探测、解析、密码、目录序列、界面和运行期资源。
 - `plugin` 下禁止建立 `shared`、`support`、`runtime` 或 `viewer` 总目录；插件之间不得共享文件类型总表或隐式运行层。
@@ -99,6 +99,40 @@ session?.resize(rows = 32, columns = 100)
 
 PTY 进程仍以 ANE 应用 UID 运行，无需 Root，也不会突破 Android 沙箱。`Ctrl+C` 等终端控制键应优先写入控制字节，让终端行规程把信号送到前台进程组；`sendSignal` 用于 Agent 或生命周期层明确控制会话。
 
+### v3 视觉 SDK
+
+插件应通过 `PluginHost.ui` 请求 ANE 的语义主题、页面、组件和标准对话框。API 只声明契约，当前宿主负责实现视觉策略；`PluginHost` 本身没有增加抽象成员，因此插件清单仍声明 `apiVersion: 3`。
+
+```kotlin
+import com.ane.filemanager.plugin.api.ui.AneDialogAction
+import com.ane.filemanager.plugin.api.ui.ui
+
+host.ui.message(
+    title = strings.finished,
+    message = strings.outputCreated,
+    actions = listOf(AneDialogAction(strings.confirm, primary = true))
+)
+```
+
+重复出现的页面和控件不应由插件手写样式。例如媒体切换按钮只声明方向、内容和动作：
+
+```kotlin
+import com.ane.filemanager.plugin.api.ui.AneMediaDirection
+
+val next = host.ui.attachMediaSwitchButton(
+    context = host.activity,
+    container = stage,
+    direction = AneMediaDirection.NEXT,
+    symbol = strings.nextSymbol,
+    contentDescription = strings.next,
+    onClick = ::openNext
+)
+```
+
+插件不得自行指定该按钮的 `textSize`、ARGB、圆角、尺寸、边距或禁用透明度。导入插件优先使用 `host.ui.page`/`browserPage` 挂载内容；内置插件 Activity 使用宿主 `HostUi`。自定义画布、终端模拟器、代码高亮、媒体解码和缩放算法等领域组件可以继续使用原生 View，但其外围控件仍由宿主提供。
+
+终端类插件的按键序列通过 `PluginHost.input` 请求。插件只传 `PluginTerminalKey` 或 Android 键位状态，控制字节、xterm 修饰符和 Alt 前缀由宿主输入层生成；屏幕键和硬件键不得维护两份映射。
+
 ## 3. plugin.json
 
 插件包根目录必须同时包含 `plugin.json` 和 `classes.dex`：
@@ -144,13 +178,13 @@ demo-plugin.zip
 
 ## 4. 构建约定
 
-先构建公共 SDK：
+先构建运行协议和视觉 SDK：
 
 ```bash
 gradle :plugin-api:assembleRelease
 ```
 
-产物为 `plugin-api/build/outputs/aar/plugin-api-release.aar`。插件工程以 `compileOnly` 引用它，生成不包含 API 副本的 `classes.dex`。打包流程必须可复现，并在 Dex 生成后计算 SHA-256。插件 ZIP 仍只包含 manifest 与 Dex；原生 PTY 库由宿主 APK 提供，不需要也不允许插件重复携带。需要复杂界面时，可使用 `PluginHost.activity` 动态创建 Dialog/View。
+产物为 `plugin-api/build/outputs/aar/plugin-api-release.aar`，其中包含运行、UI 和输入能力契约。插件工程以 `compileOnly` 引用它，生成的 `classes.dex` 不得包含 `plugin-api` 副本。打包流程必须可复现，并在 Dex 生成后计算 SHA-256。插件 ZIP 仍只包含 manifest 与 Dex；原生 PTY 库、视觉实现和键盘映射均由宿主 APK 提供，不需要也不允许插件重复携带。
 
 ## 5. 插件多语言规范
 

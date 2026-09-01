@@ -15,12 +15,15 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import com.ane.filemanager.plugin.terminal.TerminalEmulator
+import com.ane.filemanager.plugin.api.input.AnePluginInput
+import com.ane.filemanager.plugin.api.ui.AneTheme
 import kotlin.math.floor
 
 @SuppressLint("ViewConstructor")
 internal class TerminalView(
     context: Context,
-    private val palette: TerminalPalette,
+    private val palette: AneTheme,
+    private val input: AnePluginInput,
     initialTextSizeSp: Int
 ) : View(context) {
     private var writer: (ByteArray) -> Unit = {}
@@ -225,15 +228,14 @@ internal class TerminalView(
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        keySequence(keyCode, event)?.let {
+        val textMetaState = event.metaState and
+            (KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK).inv()
+        input.terminalHardware(
+            keyCode = keyCode,
+            metaState = event.metaState,
+            unicodeCodePoint = event.getUnicodeChar(textMetaState)
+        )?.let {
             send(it)
-            return true
-        }
-        val unicode = event.unicodeChar
-        if (unicode != 0) {
-            var text = String(Character.toChars(unicode))
-            if (event.isAltPressed) text = "\u001b$text"
-            send(text)
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -243,32 +245,10 @@ internal class TerminalView(
     override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent): Boolean {
         val characters = event.characters
         if (!characters.isNullOrEmpty()) {
-            send(characters)
+            send(input.terminalCharacters(characters, event.metaState))
             return true
         }
         return super.onKeyMultiple(keyCode, repeatCount, event)
-    }
-
-    private fun keySequence(keyCode: Int, event: KeyEvent): String? {
-        if (event.isCtrlPressed && keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) {
-            return ((keyCode - KeyEvent.KEYCODE_A + 1).toChar()).toString()
-        }
-        return when (keyCode) {
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> "\r"
-            KeyEvent.KEYCODE_DEL -> "\u007f"
-            KeyEvent.KEYCODE_FORWARD_DEL -> "\u001b[3~"
-            KeyEvent.KEYCODE_TAB -> "\t"
-            KeyEvent.KEYCODE_ESCAPE -> "\u001b"
-            KeyEvent.KEYCODE_DPAD_UP -> "\u001b[A"
-            KeyEvent.KEYCODE_DPAD_DOWN -> "\u001b[B"
-            KeyEvent.KEYCODE_DPAD_RIGHT -> "\u001b[C"
-            KeyEvent.KEYCODE_DPAD_LEFT -> "\u001b[D"
-            KeyEvent.KEYCODE_MOVE_HOME -> "\u001b[H"
-            KeyEvent.KEYCODE_MOVE_END -> "\u001b[F"
-            KeyEvent.KEYCODE_PAGE_UP -> "\u001b[5~"
-            KeyEvent.KEYCODE_PAGE_DOWN -> "\u001b[6~"
-            else -> null
-        }
     }
 
     private fun resolveColor(color: Int): Int = when (color) {

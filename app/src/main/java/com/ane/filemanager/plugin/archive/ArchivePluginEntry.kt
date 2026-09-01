@@ -1,6 +1,5 @@
 package com.ane.filemanager.plugin.archive
 
-import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
 import com.ane.filemanager.plugin.api.AnePlugin
 import com.ane.filemanager.plugin.api.PluginFile
@@ -10,7 +9,7 @@ import com.ane.filemanager.plugin.api.PluginFileIconProvider
 import com.ane.filemanager.plugin.api.PluginHost
 import com.ane.filemanager.plugin.api.PluginSelectionActionProvider
 import com.ane.filemanager.plugin.api.PluginTaskResult
-import com.ane.filemanager.ui.dialog.AneDialog
+import com.ane.filemanager.plugin.api.ui.ui
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
@@ -56,8 +55,7 @@ class ArchivePluginEntry : AnePlugin, PluginSelectionActionProvider, PluginFileI
                 WritableArchiveFormat.TAR_GZIP -> R.string.archive_format_tar_gzip
             })
         }.toTypedArray()
-        AneDialog.choices(
-            activity = host.activity,
+        host.ui.choices(
             title = host.activity.getString(R.string.archive_choose_format),
             labels = labels.toList(),
             cancelLabel = host.activity.getString(R.string.archive_cancel)
@@ -100,8 +98,7 @@ class ArchivePluginEntry : AnePlugin, PluginSelectionActionProvider, PluginFileI
             }
         }) { result ->
             if (result.success) {
-                val activity = host.activity as? MainActivity ?: return@execute
-                ArchiveBrowserDialog(activity, source, entries.get().orEmpty()) {
+                ArchiveBrowserDialog(host, source, entries.get().orEmpty()) {
                     beginExtract(source, host)
                 }.show()
             } else if (error.get() in setOf(

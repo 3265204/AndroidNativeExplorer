@@ -17,6 +17,7 @@
 | 动画、惯性、手势阈值 | `ui/motion/` |
 | 选择、多选、滑选 | `ui/selection/` |
 | 主题、字号、间距 | `ui/appearance/` |
+| 宿主与插件共用的主题、组件、弹窗和动效 | `plugin-api/.../api/ui/` |
 | 全屏二级页面的公共外壳 | `ui/secondary/` |
 | 宿主设置页面与控件编排 | `ui/settings/` |
 | 标签和目录历史 | `navigation/` |
@@ -33,7 +34,7 @@
 
 ## UI 与响应式布局
 
-- 全屏二级页面建议使用 `SecondaryPageScaffold`，不要重复实现 Insets、标题栏、挂载、返回和进退场。
+- 宿主全屏二级页面使用 `SecondaryPageScaffold`；导入插件通过 `PluginHost.ui` 请求页面、组件和弹窗，内置插件 Activity 通过宿主 `HostUi` 使用同一实现，不要直接复制颜色表或窗口适配。
 - 二级页外壳只负责宿主 UI 协议；插件或管理器的业务卡片、状态及文案仍留在所属目录。
 - 新增宿主显示设置时，持久化接口放在 `AppearanceController`，设置页不得直接读写 `SharedPreferences`。
 - 连续数值设置使用带语义上下界的滑块；拖动时实时更新当前值并刷新预览。
@@ -85,7 +86,12 @@
 
 ## 插件界面与编辑器
 
+- 插件 API 当前保持 v3；`plugin.api.ui` 和 `plugin.api.input` 只声明能力契约与语义模型，宿主分别通过 `PluginUiProvider`、`PluginInputProvider` 提供实现，不得为了封装修改 `PluginHost` ABI。
+- 导入插件的标准消息、选择、输入、全屏页面、浏览列表和媒体控件必须从 `host.ui` 请求；内置插件 Activity 依赖 `app/ui/HostUi`，不得绕过宿主直接构建另一套公共样式。
+- 插件只能传标题、文案、方向、状态和回调等语义参数。字号、颜色、圆角、透明度、标准边距、控件尺寸和通用动效时长必须位于宿主 UI 实现，不得出现在插件控件构造代码中。
+- Activity 的系统栏和根布局安全区使用 `applyAneSystemBars`、`applyAneSystemInsets`；视频等黑色舞台可明确覆盖导航栏颜色。
 - 图片、视频、音频分别维护 `ImageSequence`、`VideoSequence`、`AudioPlaylist`，不得回收成共享的媒体类型或 Viewer 层。
+- 终端页面通过 `host.ui.page` 和 `populateConsolePage` 进入宿主外壳；PTY 生命周期放在 `TerminalSessionController`，屏幕按键与硬件键都通过 `host.input` 进入宿主输入层，不得在终端插件中重新硬编码控制序列或完整视觉层级。
 - 图片缩放焦点必须保持在双指中心；缩放状态下不触发图片切换。
 - 视频和音频切换后释放旧播放器，保存必要的恢复位置。
 - 文本加载和保存保留原编码及 BOM。

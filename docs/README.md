@@ -24,7 +24,7 @@ ane/
 │     │  ├─ pluginmanager/   安装、发现、启停及自有 res
 │     │  └─ plugin/          相互独立且各自带 res 的内置插件
 │     └─ res/                仅文件管理器核心资源
-├─ plugin-api/              插件开发 SDK（AAR）
+├─ plugin-api/              插件运行协议与公共 UI（AAR，当前 v3）
 ├─ docs/
 ├─ testphoto/               adb测试文件
 ├─ README.md

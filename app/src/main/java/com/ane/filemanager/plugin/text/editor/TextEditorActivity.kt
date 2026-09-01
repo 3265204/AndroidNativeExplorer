@@ -2,15 +2,12 @@ package com.ane.filemanager.plugin.text.editor
 
 import android.app.Activity
 import android.content.Context
-import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
-import android.view.Gravity
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -20,9 +17,9 @@ import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.plugin.text.codec.TextEncoding
 import com.ane.filemanager.plugin.text.codec.TextFileCodec
 import com.ane.filemanager.plugin.text.codec.TextFileTooLargeException
-import com.ane.filemanager.ui.dialog.AneDialog
-import com.ane.filemanager.ui.dialog.AneDialogAction
-import com.ane.filemanager.ui.theme.AppThemePalette
+import com.ane.filemanager.plugin.api.ui.AneDialogAction
+import com.ane.filemanager.plugin.api.ui.AneTheme
+import com.ane.filemanager.ui.HostUi
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -36,7 +33,7 @@ class TextEditorActivity : Activity() {
         super.attachBaseContext(AppLanguage.wrapSystem(base))
     }
     private lateinit var file: File
-    private lateinit var palette: TextEditorPalette
+    private lateinit var palette: AneTheme
     private lateinit var editor: InertialEditText
     private lateinit var title: TextView
     private lateinit var saveButton: Button
@@ -76,7 +73,7 @@ class TextEditorActivity : Activity() {
             finish()
             return
         }
-        palette = TextEditorPalette.from(this)
+        palette = HostUi.theme(this)
         applyTextEditorSystemBars(palette)
         buildUi()
         loadFile()
@@ -88,45 +85,25 @@ class TextEditorActivity : Activity() {
             setBackgroundColor(palette.background)
             applyTextEditorSystemInsets()
         }
-        val top = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(8), 0)
-            setBackgroundColor(palette.surface)
-        }
-        val back = Button(this).apply {
-            text = getString(R.string.text_back_symbol)
-            textSize = 28f
-            setTextColor(palette.text)
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            contentDescription = getString(R.string.text_editor_back)
-            setOnClickListener { requestClose() }
-        }
-        title = TextView(this).apply {
-            text = file.name
-            textSize = 16f
-            setTextColor(palette.text)
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-        }
-        saveButton = Button(this).apply {
-            setText(R.string.editor_save)
-            setTextColor(palette.primary)
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            isEnabled = false
-            setOnClickListener { saveFile() }
-        }
-        top.addView(back, LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT))
-        top.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(saveButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, -1))
+        val top = HostUi.topBar(
+            context = this,
+            theme = palette,
+            navigationLabel = getString(R.string.text_back_symbol),
+            navigationDescription = getString(R.string.text_editor_back),
+            title = file.name,
+            onNavigate = ::requestClose
+        )
+        title = top.title
+        saveButton = HostUi.textActionButton(
+            context = this,
+            theme = palette,
+            label = getString(R.string.editor_save),
+            onClick = ::saveFile
+        ).apply { isEnabled = false }
+        top.addTrailing(saveButton)
 
         editor = InertialEditText(this).apply {
-            setTextColor(palette.text)
-            setHintTextColor(palette.muted)
-            setBackgroundColor(palette.background)
-            typeface = Typeface.MONOSPACE
-            textSize = 15f
-            gravity = Gravity.TOP or Gravity.START
-            setPadding(dp(16), dp(14), dp(16), dp(24))
+            HostUi.configureTextEditor(this, palette)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setHorizontallyScrolling(CodeHighlighter.prefersNoWrap(file.extension))
@@ -139,7 +116,7 @@ class TextEditorActivity : Activity() {
                 handler.postDelayed(highlightRunnable, SCROLL_HIGHLIGHT_DEBOUNCE_MS)
             }
         }
-        root.addView(top, LinearLayout.LayoutParams(-1, dp(56)))
+        top.attachTo(root)
         root.addView(editor, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
     }
@@ -233,15 +210,15 @@ class TextEditorActivity : Activity() {
             finish()
             return
         }
-        AneDialog.message(
+        HostUi.message(
             activity = this,
+            theme = HostUi.theme(this, palette.dark),
             title = getString(R.string.editor_discard_title),
             message = getString(R.string.editor_discard_message),
             actions = listOf(
                 AneDialogAction(getString(R.string.text_dialog_cancel)),
                 AneDialogAction(getString(R.string.editor_discard_confirm), destructive = true, run = ::finish)
-            ),
-            colors = AppThemePalette.resolve(this, palette.dark)
+            )
         )
     }
 
@@ -255,8 +232,6 @@ class TextEditorActivity : Activity() {
         worker.shutdownNow()
         super.onDestroy()
     }
-
-    private fun dp(value: Int) = (value * resources.displayMetrics.density + .5f).toInt()
 
     internal companion object {
         const val EXTRA_FILE_PATH = "text_file_path"

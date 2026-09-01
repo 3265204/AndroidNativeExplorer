@@ -5,7 +5,10 @@ import android.webkit.MimeTypeMap
 import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
 import com.ane.filemanager.localization.AppLanguage
-import com.ane.filemanager.ui.dialog.AneDialog
+import com.ane.filemanager.input.HostPluginInput
+import com.ane.filemanager.plugin.api.input.PluginInputProvider
+import com.ane.filemanager.plugin.api.ui.AneDialog
+import com.ane.filemanager.plugin.api.ui.PluginUiProvider
 import com.ane.filemanager.plugin.api.AnePlugin
 import com.ane.filemanager.plugin.api.PluginFile
 import com.ane.filemanager.plugin.api.PluginFileAction
@@ -20,6 +23,7 @@ import com.ane.filemanager.plugin.api.PluginTerminalListener
 import com.ane.filemanager.plugin.api.PluginTerminalRequest
 import com.ane.filemanager.plugin.api.PluginTerminalSession
 import com.ane.filemanager.pluginmanager.pty.HostPtyTerminalSession
+import com.ane.filemanager.ui.PluginUiService
 import dalvik.system.DexClassLoader
 import java.io.File
 import java.util.concurrent.Executors
@@ -52,10 +56,12 @@ internal class PluginRegistry(
     private val closed = AtomicBoolean(false)
     private var records = emptyList<PluginRecord>()
 
-    private val pluginHost = object : PluginHost {
+    private val pluginHost = object : PluginHost, PluginUiProvider, PluginInputProvider {
         override val activity get() = this@PluginRegistry.activity
         override val systemLocaleTags get() = AppLanguage.systemLanguageTags(activity)
         override val hostLocaleTags get() = AppLanguage.hostLanguageTags(activity)
+        override val pluginUi = PluginUiService(activity)
+        override val pluginInput = HostPluginInput
 
         override fun toast(message: String) = activity.toast(message)
 

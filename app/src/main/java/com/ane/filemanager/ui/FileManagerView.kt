@@ -26,8 +26,8 @@ import com.ane.filemanager.operation.FileActionController
 import com.ane.filemanager.pluginmanager.PluginRegistry
 import com.ane.filemanager.ui.appearance.AppearanceController
 import com.ane.filemanager.ui.directory.DirectoryLoader
-import com.ane.filemanager.ui.dialog.AneDialog
-import com.ane.filemanager.ui.dialog.AneDialogAction
+import com.ane.filemanager.plugin.api.ui.AneDialog
+import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import com.ane.filemanager.ui.menu.FileMenuController
 import com.ane.filemanager.ui.menu.FileMenuCoordinator
 import com.ane.filemanager.ui.model.MenuKind

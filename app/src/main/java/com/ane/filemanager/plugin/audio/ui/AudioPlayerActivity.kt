@@ -4,8 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.media.AudioAttributes
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -14,7 +12,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -25,9 +22,11 @@ import android.widget.Toast
 import com.ane.filemanager.R
 import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.plugin.audio.AudioPlaylist
+import com.ane.filemanager.plugin.api.ui.AneTextRole
+import com.ane.filemanager.plugin.api.ui.AneTextTone
+import com.ane.filemanager.ui.HostUi
 import java.io.File
 import java.util.Locale
-import kotlin.math.min
 
 class AudioPlayerActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -77,7 +76,7 @@ class AudioPlayerActivity : Activity() {
         }
         playlist = AudioPlaylist.create(file, ::accepts)
         resumePosition = state?.getInt(STATE_POSITION) ?: 0
-        val palette = AudioPalette.from(this)
+        val palette = HostUi.theme(this)
         applyAudioSystemBars(palette)
 
         val root = LinearLayout(this).apply {
@@ -85,66 +84,44 @@ class AudioPlayerActivity : Activity() {
             setBackgroundColor(palette.background)
             applyAudioSystemInsets()
         }
-        val top = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(12), 0)
-            setBackgroundColor(palette.surface)
-        }
-        val back = Button(this).apply {
-            text = getString(R.string.audio_back_symbol)
-            textSize = 28f
-            setTextColor(palette.text)
-            setBackgroundColor(Color.TRANSPARENT)
-            contentDescription = getString(R.string.audio_screen_back)
-            setOnClickListener { finish() }
-        }
-        titleLabel = TextView(this).apply {
-            textSize = 16f
-            setTextColor(palette.text)
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-        }
-        positionLabel = TextView(this).apply {
-            textSize = 12f
-            setTextColor(palette.muted)
-            gravity = Gravity.CENTER
-            setPadding(dp(10), 0, dp(4), 0)
-        }
-        top.addView(back, LinearLayout.LayoutParams(dp(52), -1))
-        top.addView(titleLabel, LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(positionLabel, LinearLayout.LayoutParams(-2, -1))
+        val top = HostUi.sequenceTopBar(
+            context = this,
+            theme = palette,
+            navigationLabel = getString(R.string.audio_back_symbol),
+            navigationDescription = getString(R.string.audio_screen_back),
+            onNavigate = ::finish
+        )
+        titleLabel = top.title
+        positionLabel = top.position
 
         val stage = FrameLayout(this)
-        val artSize = min((resources.displayMetrics.widthPixels * .54f).toInt(), dp(270))
-        albumView = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            clipToOutline = true
-            background = GradientDrawable().apply {
-                cornerRadius = dp(24).toFloat()
-                setColor(palette.surface)
-            }
-            visibility = View.GONE
-        }
-        noteView = TextView(this).apply {
-            text = getString(R.string.audio_note_symbol)
-            textSize = 96f
-            gravity = Gravity.CENTER
-            setTextColor(palette.primary)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(24).toFloat()
-                setColor(palette.surface)
-            }
-        }
-        stage.addView(albumView, FrameLayout.LayoutParams(artSize, artSize, Gravity.CENTER))
-        stage.addView(noteView, FrameLayout.LayoutParams(artSize, artSize, Gravity.CENTER))
+        val artworkViews = HostUi.attachMediaArtwork(
+            this,
+            palette,
+            stage,
+            getString(R.string.audio_note_symbol)
+        )
+        albumView = artworkViews.image
+        noteView = artworkViews.placeholder
 
         val controls = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(6), dp(22), dp(20))
+            HostUi.configureMediaControls(this)
         }
         val times = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        elapsed = TextView(this).apply { setText(R.string.audio_zero_time); setTextColor(palette.muted); textSize = 12f }
-        durationLabel = TextView(this).apply { setText(R.string.audio_zero_time); setTextColor(palette.muted); textSize = 12f; gravity = Gravity.END }
+        elapsed = HostUi.text(
+            this,
+            palette,
+            getString(R.string.audio_zero_time),
+            AneTextRole.CAPTION,
+            AneTextTone.MUTED
+        )
+        durationLabel = HostUi.text(
+            this,
+            palette,
+            getString(R.string.audio_zero_time),
+            AneTextRole.CAPTION,
+            AneTextTone.MUTED
+        ).apply { gravity = Gravity.END }
         times.addView(elapsed, LinearLayout.LayoutParams(0, -2, 1f))
         times.addView(durationLabel, LinearLayout.LayoutParams(0, -2, 1f))
         seekBar = SeekBar(this).apply {
@@ -161,36 +138,26 @@ class AudioPlayerActivity : Activity() {
                 }
             })
         }
-        playButton = Button(this).apply {
-            text = getString(R.string.audio_play_symbol)
-            textSize = 23f
-            setTextColor(Color.WHITE)
-            isEnabled = false
-            contentDescription = getString(R.string.audio_play)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(palette.primary)
-            }
-            setOnClickListener { togglePlayback() }
-        }
-        previousButton = audioSwitchButton(getString(R.string.audio_previous_symbol), R.string.audio_previous, palette).apply {
-            setOnClickListener { switchAudio(-1) }
-        }
-        nextButton = audioSwitchButton(getString(R.string.audio_next_symbol), R.string.audio_next, palette).apply {
-            setOnClickListener { switchAudio(1) }
-        }
-        val playbackRow = LinearLayout(this).apply {
-            gravity = Gravity.CENTER
-            addView(previousButton, LinearLayout.LayoutParams(dp(72), dp(64)))
-            addView(playButton, LinearLayout.LayoutParams(dp(64), dp(64)).apply {
-                leftMargin = dp(18); rightMargin = dp(18)
-            })
-            addView(nextButton, LinearLayout.LayoutParams(dp(72), dp(64)))
-        }
+        val playback = HostUi.mediaPlaybackControls(
+            context = this,
+            theme = palette,
+            previousSymbol = getString(R.string.audio_previous_symbol),
+            previousDescription = getString(R.string.audio_previous),
+            playSymbol = getString(R.string.audio_play_symbol),
+            playDescription = getString(R.string.audio_play),
+            nextSymbol = getString(R.string.audio_next_symbol),
+            nextDescription = getString(R.string.audio_next),
+            onPrevious = { switchAudio(-1) },
+            onPlay = ::togglePlayback,
+            onNext = { switchAudio(1) }
+        )
+        previousButton = playback.previous
+        playButton = playback.play
+        nextButton = playback.next
         controls.addView(times, LinearLayout.LayoutParams(-1, -2))
         controls.addView(seekBar, LinearLayout.LayoutParams(-1, -2))
-        controls.addView(playbackRow, LinearLayout.LayoutParams(-1, dp(68)).apply { topMargin = dp(4) })
-        root.addView(top, LinearLayout.LayoutParams(-1, dp(56)))
+        controls.addView(playback.view, LinearLayout.LayoutParams(-1, -2))
+        top.attachTo(root)
         root.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(controls, LinearLayout.LayoutParams(-1, -2))
         setContentView(root)
@@ -229,19 +196,8 @@ class AudioPlayerActivity : Activity() {
     }
 
     private fun updateNavigation() {
-        previousButton.isEnabled = playlist.hasPrevious
-        previousButton.alpha = if (playlist.hasPrevious) 1f else .34f
-        nextButton.isEnabled = playlist.hasNext
-        nextButton.alpha = if (playlist.hasNext) 1f else .34f
-    }
-
-    private fun audioSwitchButton(symbol: String, description: Int, palette: AudioPalette) = Button(this).apply {
-        text = symbol
-        textSize = 34f
-        setTextColor(palette.text)
-        setBackgroundColor(Color.TRANSPARENT)
-        contentDescription = getString(description)
-        setPadding(0, 0, 0, dp(3))
+        HostUi.updateMediaNavigation(previousButton, playlist.hasPrevious)
+        HostUi.updateMediaNavigation(nextButton, playlist.hasNext)
     }
 
     private fun preparePlayer(file: File) {
@@ -359,8 +315,6 @@ class AudioPlayerActivity : Activity() {
         return if (hours > 0) String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
         else String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
     }
-
-    private fun dp(value: Int) = (value * resources.displayMetrics.density + .5f).toInt()
 
     internal companion object {
         const val EXTRA_FILE_PATH = "audio_file_path"

@@ -26,8 +26,8 @@ import com.ane.filemanager.provider.LocalFileProvider
 import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.sharing.ShareMimeTypes
 import com.ane.filemanager.ui.FileManagerView
-import com.ane.filemanager.ui.dialog.AneDialog
-import com.ane.filemanager.ui.dialog.AneDialogAction
+import com.ane.filemanager.plugin.api.ui.AneDialog
+import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import com.ane.filemanager.ui.search.CurrentFolderSearch
 import java.io.File
 

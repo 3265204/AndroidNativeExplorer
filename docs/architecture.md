@@ -2,7 +2,7 @@
 
 ## 总览
 
-项目包含 `app` 应用模块和独立的 `plugin-api` ABI 模块。主页面采用自定义绘制，不使用 XML 页面布局；插件界面使用 Kotlin 动态构建。
+项目包含 `app` 应用模块和独立的 `plugin-api` v3 模块。`plugin-api` 同时提供稳定运行契约和宿主/插件共用的 UI 能力；主页面采用自定义绘制，不使用 XML 页面布局，插件界面使用 Kotlin 动态构建。
 
 ```text
 MainActivity
@@ -18,7 +18,7 @@ MainActivity
    └─ input                         鼠标与桌面快捷键解析
 
 pluginmanager                     只负责安装、发现、启停与调用边界
-├─ plugin-api                      独立、稳定的插件 ABI
+├─ plugin-api                      稳定 ABI，以及 UI/输入宿主能力契约
 ├─ plugin/archive/{代码,res}        归档解压、密码与自有文案
 ├─ plugin/image/{代码,res}          图片查看、缩放与自有文案
 ├─ plugin/video/{代码,res}          视频播放、目录切换与自有文案
@@ -45,6 +45,14 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 `FileManagerRenderer` 只根据 `RenderState` 绘制界面并记录命中区域。它负责地址栏、文件列表/网格、Dock、浮动按钮、菜单、拖动预览和忙碌遮罩。
 
 `ThumbnailLoader` 异步加载图片和视频缩略图，结果进入内存缓存。绘制阶段不得同步解码大型媒体。
+
+### 宿主 UI 与输入能力
+
+`plugin-api/src/main/.../api/ui` 声明宿主 UI 能力和语义模型，不建立第二个 SDK 模块，也不改变 `PluginApi.VERSION = 3`。`PluginHost.ui` 通过 `PluginUiProvider` 取得宿主实现；当前实现位于 `app/ui/PluginUiService`，视觉常量与实际控件构建集中在 `app/ui/HostUi`。因此插件依赖的是 API 契约，最终颜色、字号、控件间距、窗口外壳和动效策略仍由宿主决定。
+
+插件只提交语义参数，例如页面标题、面包屑、上一项/下一项、按键动作和无障碍文案。`browserPage`、媒体切换按钮、播放控制、终端按键栏及编辑器表面均由宿主完成具体布局。插件业务代码可以保存返回的 View 引用来更新状态，但不得重新设置宿主组件的字号、语义颜色、圆角、透明度或标准内边距。自定义画布、终端模拟器、代码高亮和缩放算法等领域实现仍留在插件。
+
+`plugin-api/.../api/input` 同样只声明 `AnePluginInput`。`PluginHost.input` 通过 `PluginInputProvider` 进入 `app/input/HostPluginInput`，屏幕终端键与硬件键使用同一宿主映射。两个 provider 都由当前 `PluginRegistry` 的宿主对象实现，没有向 `PluginHost` 接口增加抽象成员，因此仍保持 v3 ABI。
 
 ### menu
 
@@ -100,8 +108,9 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 - 视频进入 `video/ui/VideoPlayerActivity`，同目录序列由 video 插件负责。
 - 音频进入 `audio/ui/AudioPlayerActivity`，播放列表和进度由 audio 插件负责。
 - 文本进入 `TextEditorActivity`，支持编码识别、保存、惯性滚动、缩进和代码高亮。
+- 终端由 `TerminalConsoleDialog` 把领域内容提交给 `PluginHost.ui`；`TerminalSessionController` 管理 PTY 生命周期，屏幕键和硬件键都通过 `PluginHost.input` 进入宿主 `HostPluginInput`，`TerminalView` 只负责终端绘制、模拟器和输入连接。
 
-各插件自行适配状态栏、导航栏、刘海和 DeX 任务栏，并在自己的 `res/values` 维护文案，不依赖 `plugin/shared` 一类公共界面层或宿主公共 values 池。
+各插件通过 `plugin-api` 的 UI 包统一适配状态栏、导航栏、刘海、DeX 任务栏、主题和标准弹窗，并在自己的 `res/values` 维护文案。公共 UI 只提供视觉语言，不拥有播放器、编辑器、压缩浏览等业务组件，也不建立 `plugin/shared` 一类隐式运行层。
 
 协议字段、插件边界、返回结果和安全要求见 [插件开发规范](plugins.md)。
 

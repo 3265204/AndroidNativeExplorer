@@ -19,7 +19,7 @@ import com.ane.filemanager.ui.model.MenuKind
 import com.ane.filemanager.ui.model.RenderState
 import com.ane.filemanager.ui.model.TabHit
 import com.ane.filemanager.ui.model.TabMotionStart
-import com.ane.filemanager.ui.theme.AppThemePalette
+import com.ane.filemanager.plugin.api.ui.AneTheme
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -54,7 +54,7 @@ internal class FileManagerRenderer(
     private val thumbnails = ThumbnailLoader(onInvalidate)
     private val fileMetadata = hashMapOf<String, FileMetadata>()
     private val marqueeStarts = mutableMapOf<String, Long>()
-    private var resolvedPalette: AppThemePalette? = null
+    private var resolvedPalette: AneTheme? = null
     private lateinit var state: RenderState
     private var width = 0
     private var height = 0
@@ -184,12 +184,12 @@ internal class FileManagerRenderer(
         else -> Color.MAGENTA
     }
 
-    fun surfaceColor(dark: Boolean): Int = AppThemePalette.resolve(context, dark).surface
+    fun surfaceColor(dark: Boolean): Int = AneTheme.resolve(context, dark).surface
 
-    private fun palette(): AppThemePalette {
+    private fun palette(): AneTheme {
         val current = resolvedPalette
         if (current != null && current.dark == state.appearance.dark) return current
-        return AppThemePalette.resolve(context, state.appearance.dark).also { resolvedPalette = it }
+        return AneTheme.resolve(context, state.appearance.dark).also { resolvedPalette = it }
     }
 
     fun close() {

@@ -1,20 +1,17 @@
 package com.ane.filemanager.ui.secondary
 
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
-import android.view.Gravity
-import android.view.View
 import android.view.WindowInsets
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
 import com.ane.filemanager.ui.model.UiInsets
-import com.ane.filemanager.ui.motion.FullscreenOverlayMotion
-import com.ane.filemanager.ui.theme.AppThemePalette
+import com.ane.filemanager.plugin.api.ui.AneComponents
+import com.ane.filemanager.plugin.api.ui.AneMotion
+import com.ane.filemanager.plugin.api.ui.AneTheme
+import com.ane.filemanager.plugin.api.ui.AneUiTokens
 
 /**
  * Shared host chrome for full-screen second-level pages.
@@ -24,25 +21,36 @@ import com.ane.filemanager.ui.theme.AppThemePalette
  */
 internal class SecondaryPageScaffold(
     private val host: MainActivity,
-    private val theme: AppThemePalette,
+    private val theme: AneTheme,
     title: String,
     closeDescription: String,
     private val originX: Float,
     private val originY: Float,
-    private val onUsableWidthChanged: ((Int) -> Unit)? = null
+    private val onUsableWidthChanged: ((Int) -> Unit)? = null,
+    private val onClosed: () -> Unit = {}
 ) {
     val content = LinearLayout(host).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(HORIZONTAL_PADDING_DP), dp(TOP_PADDING_DP),
-            dp(HORIZONTAL_PADDING_DP), dp(BOTTOM_PADDING_DP))
+        setPadding(
+            dp(AneUiTokens.PAGE_HORIZONTAL_PADDING_DP),
+            dp(AneUiTokens.PAGE_TOP_PADDING_DP),
+            dp(AneUiTokens.PAGE_HORIZONTAL_PADDING_DP),
+            dp(AneUiTokens.PAGE_BOTTOM_PADDING_DP)
+        )
         setBackgroundColor(theme.background)
     }
-    val summary = TextView(host).apply {
-        textSize = 13f
-        setTextColor(theme.muted)
-    }
+    private val header = AneComponents.pageHeader(
+        context = host,
+        theme = theme,
+        navigationIconRes = R.drawable.ic_secondary_back,
+        navigationDescription = closeDescription,
+        title = title,
+        onNavigate = ::close
+    )
+    val summary: TextView
+        get() = header.summary
     val root = FrameLayout(host).apply {
-        visibility = View.INVISIBLE
+        visibility = android.view.View.INVISIBLE
         setBackgroundColor(theme.background)
         isClickable = true
         isFocusable = true
@@ -64,7 +72,7 @@ internal class SecondaryPageScaffold(
     private var closing = false
 
     init {
-        content.addView(header(title, closeDescription), LinearLayout.LayoutParams(-1, dp(HEADER_HEIGHT_DP)))
+        header.attachTo(content)
         root.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
             val width = right - left
             val oldWidth = oldRight - oldLeft
@@ -82,47 +90,21 @@ internal class SecondaryPageScaffold(
         get() {
             val widthPx = root.width.takeIf { it > 0 } ?: host.resources.displayMetrics.widthPixels
             val widthDp = (widthPx / host.resources.displayMetrics.density).toInt()
-            return (widthDp - HORIZONTAL_PADDING_DP * 2).coerceAtLeast(1)
+            return (widthDp - AneUiTokens.PAGE_HORIZONTAL_PADDING_DP * 2).coerceAtLeast(1)
         }
 
     fun show() {
         host.showFullscreenOverlay(root, ::close)
-        root.post { FullscreenOverlayMotion.reveal(root, originX, originY) }
+        root.post { AneMotion.reveal(root, originX, originY) }
     }
 
     fun close() {
         if (closing || root.parent == null) return
         closing = true
-        FullscreenOverlayMotion.hide(root) { host.removeFullscreenOverlay(root) }
-    }
-
-    private fun header(title: String, closeDescription: String): View = LinearLayout(host).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        addView(ImageButton(host).apply {
-            setImageResource(R.drawable.ic_secondary_back)
-            setColorFilter(theme.text)
-            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-            setPadding(dp(BACK_ICON_PADDING_DP), dp(BACK_ICON_PADDING_DP),
-                dp(BACK_ICON_PADDING_DP), dp(BACK_ICON_PADDING_DP))
-            background = GradientDrawable().apply {
-                setColor(theme.surface)
-                cornerRadius = dp(18).toFloat()
-            }
-            contentDescription = closeDescription
-            setOnClickListener { close() }
-        }, LinearLayout.LayoutParams(dp(BACK_SIZE_DP), dp(BACK_SIZE_DP)))
-        addView(LinearLayout(host).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), 0, 0, 0)
-            addView(TextView(host).apply {
-                text = title
-                textSize = 22f
-                setTextColor(theme.text)
-                setTypeface(typeface, Typeface.BOLD)
-            })
-            addView(summary)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
+        AneMotion.hide(root) {
+            host.removeFullscreenOverlay(root)
+            onClosed()
+        }
     }
 
     private fun systemInsets(insets: WindowInsets): UiInsets = if (Build.VERSION.SDK_INT >= 30) {
@@ -139,13 +121,4 @@ internal class SecondaryPageScaffold(
     }
 
     private fun dp(value: Int) = (value * host.resources.displayMetrics.density + .5f).toInt()
-
-    private companion object {
-        const val HORIZONTAL_PADDING_DP = 18
-        const val TOP_PADDING_DP = 14
-        const val BOTTOM_PADDING_DP = 18
-        const val HEADER_HEIGHT_DP = 60
-        const val BACK_SIZE_DP = 48
-        const val BACK_ICON_PADDING_DP = 13
-    }
 }

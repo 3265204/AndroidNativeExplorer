@@ -16,10 +16,10 @@ import com.ane.filemanager.R
 import com.ane.filemanager.pluginmanager.PluginManagerEntry
 import com.ane.filemanager.pluginmanager.PluginRegistry
 import com.ane.filemanager.pluginmanager.PluginSource
-import com.ane.filemanager.ui.dialog.AneDialog
-import com.ane.filemanager.ui.dialog.AneDialogAction
+import com.ane.filemanager.plugin.api.ui.AneDialog
+import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import com.ane.filemanager.ui.secondary.SecondaryPageScaffold
-import com.ane.filemanager.ui.theme.AppThemePalette
+import com.ane.filemanager.plugin.api.ui.AneTheme
 import java.io.File
 
 /** App-owned second-level plugin page. It never delegates ZIP selection to another file manager. */
@@ -31,7 +31,7 @@ internal class PluginManagerDialog(
     private val originY: Float
 ) {
     private val dark = host.getSharedPreferences("appearance", 0).getBoolean("dark", false)
-    private val theme = AppThemePalette.resolve(host, dark)
+    private val theme = AneTheme.resolve(host, dark)
     private val surface = theme.surface
     private val text = theme.text
     private val muted = theme.muted

@@ -21,10 +21,10 @@ import com.ane.filemanager.R
 import com.ane.filemanager.navigation.BrowserTab
 import com.ane.filemanager.navigation.DockSessionController
 import com.ane.filemanager.navigation.DockSessionStore
-import com.ane.filemanager.ui.dialog.AneDialog
+import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.ui.motion.GestureTiming
 import com.ane.filemanager.ui.secondary.SecondaryPageScaffold
-import com.ane.filemanager.ui.theme.AppThemePalette
+import com.ane.filemanager.plugin.api.ui.AneTheme
 
 /** Full-screen owner for persisted Dock tabs and their startup restore policy. */
 internal class TabManagerDialog(
@@ -36,7 +36,7 @@ internal class TabManagerDialog(
     private val onTabsChanged: () -> Unit
 ) {
     private val dark = host.getSharedPreferences("appearance", 0).getBoolean("dark", false)
-    private val theme = AppThemePalette.resolve(host, dark)
+    private val theme = AneTheme.resolve(host, dark)
     private val store = DockSessionStore(host)
     private lateinit var page: SecondaryPageScaffold
     private lateinit var summary: TextView

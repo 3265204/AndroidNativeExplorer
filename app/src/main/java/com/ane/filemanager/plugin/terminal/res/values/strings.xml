@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="terminal_title">ANE 终端</string>
-    <string name="terminal_summary">PTY 交互终端 · 应用权限 · 无需 Root</string>
     <string name="terminal_open_here">在此处打开终端</string>
     <string name="terminal_start_directory">终端启动目录：%1$s</string>
     <string name="terminal_close">返回文件管理器</string>

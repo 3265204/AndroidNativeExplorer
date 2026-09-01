@@ -7,16 +7,15 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
-import android.view.ViewGroup
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import com.ane.filemanager.R
 import com.ane.filemanager.localization.AppLanguage
+import com.ane.filemanager.plugin.api.ui.AneMediaDirection
 import com.ane.filemanager.plugin.image.ImageSequence
+import com.ane.filemanager.ui.HostUi
 import java.io.File
 
 class ImageActivity : Activity() {
@@ -42,7 +41,7 @@ class ImageActivity : Activity() {
             return
         }
         playlist = ImageSequence.create(file, ::accepts)
-        val palette = ImagePalette.from(this)
+        val palette = HostUi.theme(this)
         applyImageSystemBars(palette)
 
         val root = LinearLayout(this).apply {
@@ -50,47 +49,26 @@ class ImageActivity : Activity() {
             setBackgroundColor(palette.background)
             applyImageSystemInsets()
         }
-        val top = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), 0, dp(12), 0)
-            setBackgroundColor(palette.surface)
-        }
-        val back = Button(this).apply {
-            text = getString(R.string.image_back_symbol)
-            textSize = 28f
-            setTextColor(palette.text)
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            contentDescription = getString(R.string.image_screen_back)
-            setOnClickListener { finish() }
-        }
-        titleLabel = TextView(this).apply {
-            textSize = 16f
-            setTextColor(palette.text)
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-        }
-        position = TextView(this).apply {
-            textSize = 12f
-            setTextColor(palette.muted)
-            gravity = Gravity.CENTER
-            setPadding(dp(10), 0, dp(4), 0)
-        }
-        top.addView(back, LinearLayout.LayoutParams(dp(52), ViewGroup.LayoutParams.MATCH_PARENT))
-        top.addView(titleLabel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(position, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.MATCH_PARENT))
+        val top = HostUi.sequenceTopBar(
+            context = this,
+            theme = palette,
+            navigationLabel = getString(R.string.image_back_symbol),
+            navigationDescription = getString(R.string.image_screen_back),
+            onNavigate = ::finish
+        )
+        titleLabel = top.title
+        position = top.position
 
-        val stage = android.widget.FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
+        val stage = HostUi.mediaStage(this)
         imageView = ZoomableImageView(this)
         imageView.onSwipeLeft = { switchImage(1) }
         imageView.onSwipeRight = { switchImage(-1) }
-        progress = ProgressBar(this)
         stage.addView(imageView, android.widget.FrameLayout.LayoutParams(-1, -1))
-        stage.addView(progress, android.widget.FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
-        root.addView(top, LinearLayout.LayoutParams(-1, dp(56)))
+        progress = HostUi.attachMediaProgress(this, stage)
+        top.attachTo(root)
         root.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
-        loadImage(playlist.current, 0)
+        loadImage(playlist.current, null)
     }
 
     override fun onSaveInstanceState(state: Bundle) {
@@ -110,17 +88,16 @@ class ImageActivity : Activity() {
         val file = playlist.moveBy(delta) ?: return
         switching = true
         val stageWidth = imageView.width.coerceAtLeast(resources.displayMetrics.widthPixels)
-        val exit = if (delta > 0) -stageWidth * .16f else stageWidth * .16f
-        imageView.animate().translationX(exit).alpha(0f)
-            .setDuration(IMAGE_EXIT_ANIMATION_DURATION_MS).withEndAction {
+        val direction = if (delta > 0) AneMediaDirection.NEXT else AneMediaDirection.PREVIOUS
+        HostUi.animateMediaExit(imageView, direction, stageWidth) {
             imageView.setImageDrawable(null)
             bitmap?.recycle()
             bitmap = null
-            loadImage(file, delta)
-        }.start()
+            loadImage(file, direction)
+        }
     }
 
-    private fun loadImage(file: File, direction: Int) {
+    private fun loadImage(file: File, direction: AneMediaDirection?) {
         val generation = ++loadGeneration
         titleLabel.text = file.name
         position.text = playlist.positionLabel
@@ -139,14 +116,11 @@ class ImageActivity : Activity() {
                 } else {
                     bitmap = loaded
                     imageView.setImageBitmap(loaded)
-                    if (direction != 0) {
+                    if (direction != null) {
                         val stageWidth = imageView.width.coerceAtLeast(resources.displayMetrics.widthPixels)
-                        imageView.translationX = if (direction > 0) stageWidth * .12f else -stageWidth * .12f
-                        imageView.alpha = 0f
-                        imageView.animate().translationX(0f).alpha(1f)
-                            .setDuration(IMAGE_ENTER_ANIMATION_DURATION_MS).withEndAction {
+                        HostUi.animateMediaEnter(imageView, direction, stageWidth) {
                             switching = false
-                        }.start()
+                        }
                     } else {
                         imageView.translationX = 0f
                         imageView.alpha = 1f
@@ -207,14 +181,10 @@ class ImageActivity : Activity() {
         } catch (_: Exception) { 0 }
     }
 
-    private fun dp(value: Int) = (value * resources.displayMetrics.density + .5f).toInt()
-
     internal companion object {
         const val EXTRA_FILE_PATH = "image_file_path"
         val EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "avif")
         fun accepts(file: File) = file.isFile && file.extension.lowercase() in EXTENSIONS
-        const val IMAGE_EXIT_ANIMATION_DURATION_MS = 110L
-        const val IMAGE_ENTER_ANIMATION_DURATION_MS = 150L
         const val STATE_PATH = "image_path"
     }
 }

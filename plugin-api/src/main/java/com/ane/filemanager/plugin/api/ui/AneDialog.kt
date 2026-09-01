@@ -1,11 +1,10 @@
-package com.ane.filemanager.ui.dialog
+package com.ane.filemanager.plugin.api.ui
 
 import android.app.Activity
 import android.app.Dialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.GradientDrawable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -19,10 +18,9 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.ane.filemanager.ui.theme.AppThemePalette
 import kotlin.math.min
 
-internal data class AneDialogAction(
+data class AneDialogAction(
     val label: String,
     val primary: Boolean = false,
     val destructive: Boolean = false,
@@ -30,7 +28,7 @@ internal data class AneDialogAction(
 )
 
 /** App-owned modal surface with semantic theme colors and no platform window transitions. */
-internal object AneDialog {
+object AneDialog {
     fun input(
         activity: Activity,
         title: String,
@@ -39,7 +37,7 @@ internal object AneDialog {
         inputType: Int,
         confirmLabel: String,
         cancelLabel: String,
-        colors: AppThemePalette = AppThemePalette.resolve(activity, hostDark(activity)),
+        colors: AneTheme = AneTheme.resolve(activity),
         validate: (String) -> String? = { null },
         onCancel: (() -> Unit)? = null,
         onConfirm: (String) -> Unit
@@ -98,7 +96,7 @@ internal object AneDialog {
         title: String,
         message: String,
         actions: List<AneDialogAction>,
-        colors: AppThemePalette = AppThemePalette.resolve(activity, hostDark(activity))
+        colors: AneTheme = AneTheme.resolve(activity)
     ) {
         val frame = frame(activity, title, colors)
         frame.body.addView(text(activity, message, 14.5f, frame.palette.text).apply {
@@ -118,7 +116,7 @@ internal object AneDialog {
         title: String,
         labels: List<String>,
         cancelLabel: String,
-        colors: AppThemePalette = AppThemePalette.resolve(activity, hostDark(activity)),
+        colors: AneTheme = AneTheme.resolve(activity),
         onSelected: (Int) -> Unit
     ) {
         val frame = frame(activity, title, colors)
@@ -151,7 +149,7 @@ internal object AneDialog {
         items: List<T>,
         label: (T) -> String,
         filter: (List<T>, String) -> List<T>,
-        colors: AppThemePalette = AppThemePalette.resolve(activity, hostDark(activity)),
+        colors: AneTheme = AneTheme.resolve(activity),
         onSelected: (T) -> Unit
     ) {
         val frame = frame(activity, title, colors)
@@ -203,7 +201,7 @@ internal object AneDialog {
         input.requestFocus()
     }
 
-    private fun frame(activity: Activity, title: String, palette: AppThemePalette): Frame {
+    private fun frame(activity: Activity, title: String, palette: AneTheme): Frame {
         val dialog = Dialog(activity).apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
             setCanceledOnTouchOutside(true)
@@ -211,7 +209,11 @@ internal object AneDialog {
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(activity, 20), dp(activity, 18), dp(activity, 20), dp(activity, 14))
-            background = rounded(palette.surface, palette.outline, dp(activity, 22).toFloat())
+            background = AneShapes.rounded(
+                palette.surface,
+                dp(activity, AneUiTokens.RADIUS_LARGE_DP).toFloat(),
+                palette.outline
+            )
             elevation = dp(activity, 14).toFloat()
         }
         root.addView(text(activity, title, 19f, palette.text, Typeface.BOLD).apply {
@@ -239,7 +241,11 @@ internal object AneDialog {
         val button = text(frame.activity, action.label, 14f, foreground, Typeface.BOLD).apply {
             gravity = Gravity.CENTER
             setPadding(dp(context, 14), dp(context, 10), dp(context, 14), dp(context, 10))
-            this.background = rounded(background, frame.palette.outline, dp(context, 11).toFloat())
+            this.background = AneShapes.rounded(
+                background,
+                dp(context, AneUiTokens.RADIUS_SMALL_DP).toFloat(),
+                frame.palette.outline
+            )
             isClickable = true
             isFocusable = true
             setOnClickListener { overrideRun() }
@@ -249,23 +255,31 @@ internal object AneDialog {
         })
     }
 
-    private fun choiceRow(activity: Activity, label: String, palette: AppThemePalette, action: () -> Unit): TextView =
+    private fun choiceRow(activity: Activity, label: String, palette: AneTheme, action: () -> Unit): TextView =
         text(activity, label, 15f, palette.text).apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(activity, 14), dp(activity, 13), dp(activity, 14), dp(activity, 13))
-            background = rounded(palette.surface2, palette.outline, dp(activity, 11).toFloat())
+            background = AneShapes.rounded(
+                palette.surface2,
+                dp(activity, AneUiTokens.RADIUS_SMALL_DP).toFloat(),
+                palette.outline
+            )
             isClickable = true
             isFocusable = true
             setOnClickListener { action() }
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(activity, 7) }
         }
 
-    private fun editText(activity: Activity, palette: AppThemePalette) = EditText(activity).apply {
+    private fun editText(activity: Activity, palette: AneTheme) = EditText(activity).apply {
         setTextColor(palette.text)
         setHintTextColor(palette.muted)
         textSize = 15f
         setPadding(dp(activity, 14), dp(activity, 11), dp(activity, 14), dp(activity, 11))
-        background = rounded(palette.surface2, palette.primary, dp(activity, 12).toFloat())
+        background = AneShapes.rounded(
+            palette.surface2,
+            dp(activity, AneUiTokens.RADIUS_SMALL_DP).toFloat(),
+            palette.primary
+        )
     }
 
     private fun text(
@@ -291,19 +305,13 @@ internal object AneDialog {
         }
         frame.dialog.show()
         val activity = frame.activity
-        val available = activity.resources.displayMetrics.widthPixels - dp(activity, 32)
-        frame.dialog.window?.setLayout(min(available, dp(activity, 560)), WindowManager.LayoutParams.WRAP_CONTENT)
+        val available = activity.resources.displayMetrics.widthPixels -
+            dp(activity, AneUiTokens.DIALOG_SCREEN_MARGIN_DP * 2)
+        frame.dialog.window?.setLayout(
+            min(available, dp(activity, AneUiTokens.DIALOG_MAX_WIDTH_DP)),
+            WindowManager.LayoutParams.WRAP_CONTENT
+        )
     }
-
-    private fun rounded(fill: Int, stroke: Int, radius: Float) = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = radius
-        setColor(fill)
-        setStroke(1, stroke)
-    }
-
-    private fun hostDark(activity: Activity): Boolean =
-        activity.getSharedPreferences("appearance", 0).getBoolean("dark", false)
 
     private fun dp(activity: android.content.Context, value: Int): Int =
         (value * activity.resources.displayMetrics.density + .5f).toInt()
@@ -313,9 +321,11 @@ internal object AneDialog {
         val dialog: Dialog,
         val buttons: LinearLayout,
         val body: LinearLayout,
-        val palette: AppThemePalette
+        val palette: AneTheme
     )
 
     private const val SEARCH_DEBOUNCE_MS = 70L
     private const val MAX_VISIBLE_RESULTS = 100
 }
+
+

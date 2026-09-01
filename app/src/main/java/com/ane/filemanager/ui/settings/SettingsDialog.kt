@@ -17,10 +17,10 @@ import com.ane.filemanager.R
 import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.localization.LanguageMode
 import com.ane.filemanager.ui.appearance.AppearanceController
-import com.ane.filemanager.ui.dialog.AneDialog
+import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.ui.model.LayoutMode
 import com.ane.filemanager.ui.secondary.SecondaryPageScaffold
-import com.ane.filemanager.ui.theme.AppThemePalette
+import com.ane.filemanager.plugin.api.ui.AneTheme
 
 /** Full-screen settings owner; values remain persisted by their focused controllers. */
 internal class SettingsDialog(
@@ -33,7 +33,7 @@ internal class SettingsDialog(
     private val onFilesChanged: () -> Unit,
     private val openPermissionSettings: () -> Unit
 ) {
-    private val theme = AppThemePalette.resolve(host, appearance.dark)
+    private val theme = AneTheme.resolve(host, appearance.dark)
     private lateinit var page: SecondaryPageScaffold
     private lateinit var grid: GridLayout
 

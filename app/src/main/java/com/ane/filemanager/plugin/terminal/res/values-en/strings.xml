@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="terminal_title">ANE Terminal</string>
-    <string name="terminal_summary">Interactive PTY terminal · app permissions · no root</string>
     <string name="terminal_open_here">Open terminal here</string>
     <string name="terminal_start_directory">Terminal start directory: %1$s</string>
     <string name="terminal_close">Back to file manager</string>
