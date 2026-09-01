@@ -1,5 +1,7 @@
 # ANE — Android Native Explorer
 
+[中文](README.md) | [English](README-en.md)
+
 ANE（Android Native Explorer）是使用 Kotlin 编写的 Android 本地文件管理器，主要面向触屏、鼠标和 DeX 等桌面化 Android 环境。主界面使用自定义 `View` 绘制，并内置图片、视频、音频查看器和带代码高亮的文本编辑器。
 
 ## 功能
@@ -102,11 +104,11 @@ adb -s 127.0.0.1:16384 shell am start -n com.ane.filemanager/.MainActivity
 
 ## 开发
 
-代码结构、职责边界、修改流程和测试要求见 [docs](docs/README.md)。开始修改前建议依次阅读：
+代码结构、职责边界、修改流程和测试要求见 [docs](docs/README.md)，英文版见 [docs-en](docs-en/README.md)。开始修改前建议依次阅读：
 
-1. [架构说明](docs/architecture.md)
-2. [开发规范](docs/development.md)
-3. [测试指南](docs/testing.md)
+1. [架构说明](docs/architecture.md) / [Architecture](docs-en/architecture.md)
+2. [开发规范](docs/development.md) / [Development conventions](docs-en/development.md)
+3. [测试指南](docs/testing.md) / [Testing guide](docs-en/testing.md)
 
 请不要在该项目下添加非默认插件优化的pr，插件应作为另一个独立项目开发，该项目仅做为文件管理系统的开发使用。
 
