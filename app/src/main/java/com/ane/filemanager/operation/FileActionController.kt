@@ -3,8 +3,6 @@ package com.ane.filemanager.operation
 import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
 import java.io.File
-import java.util.concurrent.Executors
-import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -13,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal class FileActionController(
     private val host: MainActivity,
-    rootDirectory: File,
+    private val transactions: FileTransactionService,
     private val currentDirectory: () -> File,
     private val selectedFiles: () -> List<File>,
     private val replaceSelection: (File?) -> Unit,
@@ -21,13 +19,10 @@ internal class FileActionController(
     private val setBusy: (String?) -> Unit,
     private val refresh: () -> Unit
 ) {
-    private val files = FileOperationService()
-    private val executor = Executors.newSingleThreadExecutor { task ->
-        Thread(task, FILE_OPERATION_THREAD_NAME)
-    }
+    private val files get() = transactions.files
     private val closed = AtomicBoolean(false)
-    private val history = FileHistoryController()
-    private val trashDirectory = File(rootDirectory, ".ane-filemanager-trash")
+    private val history get() = transactions.history
+    private val trashDirectory get() = transactions.trashDirectory
     private var clipboard = listOf<File>()
 
     private var clipboardCut: Boolean = false
@@ -35,10 +30,6 @@ internal class FileActionController(
     val hasClipboard get() = clipboard.isNotEmpty()
     val canUndo get() = history.canUndo
     val canRedo get() = history.canRedo
-
-    init {
-        execute { files.cleanupTrash(trashDirectory) }
-    }
 
     fun copySelection(cut: Boolean) {
         clipboard = selectedFiles()
@@ -119,7 +110,7 @@ internal class FileActionController(
     }
 
     fun registerCreatedOutput(output: File) {
-        recordUndo(createdOutputAction(output, output.name))
+        transactions.registerCreatedOutput(output)
     }
 
     fun undoLastOperation() {
@@ -137,11 +128,11 @@ internal class FileActionController(
     }
 
     /**
-     * Stops accepting work while allowing queued file transactions to finish safely.
-     * Completion callbacks are suppressed after closing because the host Activity is no longer valid.
+     * Stops this UI controller from delivering callbacks. The shared transaction owner is closed by
+     * the composition root after plugins have also released their work.
      */
     fun close() {
-        if (closed.compareAndSet(false, true)) executor.shutdown()
+        closed.set(true)
     }
 
     private fun <T> performJob(label: String, job: () -> FileResult<T>, onSuccess: (T) -> Unit = {}) {
@@ -262,12 +253,7 @@ internal class FileActionController(
 
     private fun execute(task: () -> Unit): Boolean {
         if (closed.get()) return false
-        return try {
-            executor.execute { task() }
-            true
-        } catch (_: RejectedExecutionException) {
-            false
-        }
+        return transactions.execute(task)
     }
 
     private fun recordTransferUndo(records: List<TransferRecord>, moved: Boolean) {
@@ -326,9 +312,7 @@ internal class FileActionController(
         return FileHistoryAction(
             label = label,
             undo = {
-                deleteRecordedToTrash(listOf(output)).map { records ->
-                    trashRecords = records
-                }
+                deleteRecordedToTrash(listOf(output)).map { records -> trashRecords = records }
             },
             redo = { files.restoreTrash(trashRecords) }
         )
@@ -369,7 +353,4 @@ internal class FileActionController(
     private fun showProblem(problem: FileProblem) = host.toast(host.fileProblemMessage(problem))
     private fun s(resId: Int, vararg args: Any): String = host.getString(resId, *args)
 
-    private companion object {
-        const val FILE_OPERATION_THREAD_NAME = "ane-file-operation"
-    }
 }

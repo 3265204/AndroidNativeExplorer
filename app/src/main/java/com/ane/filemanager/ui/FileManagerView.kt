@@ -23,6 +23,7 @@ import com.ane.filemanager.navigation.BrowserTab
 import com.ane.filemanager.navigation.DockSessionController
 import com.ane.filemanager.navigation.DockSessionStore
 import com.ane.filemanager.operation.FileActionController
+import com.ane.filemanager.operation.FileTransactionService
 import com.ane.filemanager.pluginmanager.PluginRegistry
 import com.ane.filemanager.ui.appearance.AppearanceController
 import com.ane.filemanager.ui.directory.DirectoryLoader
@@ -96,6 +97,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     }
 
     private val storageRoot = host.initialDirectory()
+    private val transactions = FileTransactionService(storageRoot)
     private val dockStore = DockSessionStore(context)
     private lateinit var dock: DockSessionController
     private val tabs get() = dock.tabs
@@ -202,7 +204,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         persistDock()
         fileActions = FileActionController(
             host = host,
-            rootDirectory = root,
+            transactions = transactions,
             currentDirectory = { currentDirectory },
             selectedFiles = selection::files,
             replaceSelection = selection::replace,
@@ -212,6 +214,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         )
         plugins = PluginRegistry(
             activity = host,
+            transactions = transactions,
             setBusy = { message -> busyText = message; invalidate() },
             reportOutput = ::handlePluginOutput
         )
@@ -251,6 +254,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         renderer.close()
         if (::fileActions.isInitialized) fileActions.close()
         if (::plugins.isInitialized) plugins.close()
+        transactions.close()
     }
 
     fun persistSession() {
@@ -294,9 +298,9 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         }
     }
 
-    fun handlePluginOutput(output: File, created: Boolean) {
+    fun handlePluginOutput(output: File, registerHistory: Boolean) {
         if (!output.exists()) return
-        if (created) fileActions.registerCreatedOutput(output)
+        if (registerHistory) fileActions.registerCreatedOutput(output)
         selection.replace(output)
         refresh()
     }

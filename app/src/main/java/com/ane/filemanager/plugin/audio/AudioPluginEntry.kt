@@ -3,7 +3,6 @@ package com.ane.filemanager.plugin.audio
 import com.ane.filemanager.plugin.api.AneIntentPluginEntry
 import com.ane.filemanager.plugin.api.PluginFile
 import com.ane.filemanager.plugin.audio.ui.AudioPlayerActivity
-import java.io.File
 
 class AudioPluginEntry : AneIntentPluginEntry(
     AudioPlayerActivity::class.java,
@@ -16,5 +15,4 @@ internal object AudioPluginFiles {
     )
 
     fun supports(file: PluginFile): Boolean = file.extension.lowercase() in extensions
-    fun accepts(file: File): Boolean = file.isFile && file.extension.lowercase() in extensions
 }

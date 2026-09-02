@@ -138,14 +138,30 @@ internal object ArchiveExtractor {
 
     fun extract(file: File, password: CharArray? = null): ArchivePluginResult<File> =
         try {
-            extractInternal(file, password)
+            extractInternal(file, password, requestedOutput = null)
         } finally {
             password?.fill('\u0000')
         }
 
+    fun extractTo(
+        file: File,
+        output: File,
+        password: CharArray? = null
+    ): ArchivePluginResult<File> = try {
+        extractInternal(file, password, requestedOutput = output)
+    } finally {
+        password?.fill('\u0000')
+    }
+
+    fun suggestedOutputName(file: File): String = when (val resolved = ArchiveVolumeResolver.resolve(file)) {
+        is ArchivePluginResult.Success -> resolved.value.outputName
+        is ArchivePluginResult.Failure -> file.nameWithoutExtension.ifBlank { "archive" }
+    }
+
     private fun extractInternal(
         file: File,
-        password: CharArray?
+        password: CharArray?,
+        requestedOutput: File?
     ): ArchivePluginResult<File> {
         val source = when (val resolved = ArchiveVolumeResolver.resolve(file)) {
             is ArchivePluginResult.Success -> resolved.value
@@ -155,8 +171,11 @@ internal object ArchiveExtractor {
             ?: return failure(ArchivePluginError.UNSUPPORTED, source.primary.name)
         val parent = source.primary.parentFile
             ?: return failure(ArchivePluginError.EXTRACT_FAILED, source.primary.name)
-        val output = availableTarget(parent, source.outputName)
-        val staging = File(parent, ".${output.name}.extract-${UUID.randomUUID()}")
+        val output = requestedOutput ?: availableTarget(parent, source.outputName)
+        val staging = requestedOutput ?: File(parent, ".${output.name}.extract-${UUID.randomUUID()}")
+        if (requestedOutput != null && output.exists()) {
+            return failure(ArchivePluginError.NAME_EXISTS, output.name)
+        }
         if (!staging.mkdir()) return failure(ArchivePluginError.CREATE_DIRECTORY, output.name)
 
         return try {
@@ -172,8 +191,10 @@ internal object ArchiveExtractor {
                 ArchiveFormat.BZIP2 -> extractSingle(bzip2(source.primary), staging, source.outputName)
                 ArchiveFormat.XZ -> extractSingle(xz(source.primary), staging, source.outputName)
             }
-            if (output.exists()) throw ArchivePluginException(ArchivePluginError.NAME_EXISTS, output.name)
-            move(staging, output)
+            if (requestedOutput == null) {
+                if (output.exists()) throw ArchivePluginException(ArchivePluginError.NAME_EXISTS, output.name)
+                move(staging, output)
+            }
             ArchivePluginResult.Success(output)
         } catch (error: UnsafeArchiveEntryException) {
             delete(staging)

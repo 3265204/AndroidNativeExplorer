@@ -9,7 +9,6 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -39,6 +38,45 @@ internal object ArchiveCompressor {
 
     @Throws(IOException::class)
     fun compress(sources: List<File>, format: WritableArchiveFormat, fallbackBaseName: String): File {
+        val files = validatedSources(sources, format)
+        val parent = checkNotNull(files.first().parentFile).canonicalFile
+        val baseName = outputBaseName(files, fallbackBaseName)
+        val output = availableTarget(parent, baseName, format.extension)
+        return compressTo(files, format, output)
+    }
+
+    fun suggestedOutputName(
+        sources: List<File>,
+        format: WritableArchiveFormat,
+        fallbackBaseName: String
+    ): String {
+        val files = validatedSources(sources, format)
+        return "${outputBaseName(files, fallbackBaseName)}.${format.extension}"
+    }
+
+    @Throws(IOException::class)
+    fun compressTo(sources: List<File>, format: WritableArchiveFormat, target: File): File {
+        val files = validatedSources(sources, format)
+        if (target.exists()) throw IOException("Archive target already exists")
+        try {
+            when (format) {
+                WritableArchiveFormat.ZIP -> writeZip(files, target)
+                WritableArchiveFormat.SEVEN_Z -> writeSevenZ(files, target)
+                WritableArchiveFormat.TAR -> writeTar(files, target, gzip = false)
+                WritableArchiveFormat.TAR_GZIP -> writeTar(files, target, gzip = true)
+            }
+            return target
+        } catch (error: Exception) {
+            target.delete()
+            if (error is IOException) throw error
+            throw IOException("Could not create archive", error)
+        }
+    }
+
+    private fun validatedSources(
+        sources: List<File>,
+        format: WritableArchiveFormat
+    ): List<File> {
         if (!format.isAvailable()) throw IOException("Archive writer unavailable")
         val files = sources.filter(File::exists).distinctBy(File::getCanonicalPath)
         if (files.isEmpty()) throw IOException("Nothing selected")
@@ -46,24 +84,7 @@ internal object ArchiveCompressor {
         if (files.any { it.parentFile?.canonicalFile != parent }) {
             throw IOException("Selected files do not share a folder")
         }
-
-        val baseName = outputBaseName(files, fallbackBaseName)
-        val output = availableTarget(parent, baseName, format.extension)
-        val staging = File(parent, ".${output.name}.compress-${UUID.randomUUID()}.tmp")
-        try {
-            when (format) {
-                WritableArchiveFormat.ZIP -> writeZip(files, staging)
-                WritableArchiveFormat.SEVEN_Z -> writeSevenZ(files, staging)
-                WritableArchiveFormat.TAR -> writeTar(files, staging, gzip = false)
-                WritableArchiveFormat.TAR_GZIP -> writeTar(files, staging, gzip = true)
-            }
-            if (output.exists() || !staging.renameTo(output)) throw IOException("Could not commit archive")
-            return output
-        } catch (error: Exception) {
-            staging.delete()
-            if (error is IOException) throw error
-            throw IOException("Could not create archive", error)
-        }
+        return files
     }
 
     private fun writeZip(sources: List<File>, target: File) {

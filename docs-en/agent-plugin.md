@@ -39,8 +39,7 @@ Queries and mutations must stay within host-granted roots after canonical/symlin
 ## Delivery order
 
 1. Branching bidirectional history and existing UI integration (foundation implemented).
-2. Move executor, transaction commit, and history ownership into one shared host service.
+2. Move executor, transaction commit, and history ownership into one shared host service (completed for UI actions, text writes, and plugin output commits).
 3. Expose optional query, preview, commit, and history providers in `plugin-api.file`.
 4. Build a model-free rule organizer plugin to validate the boundary.
 5. Add natural-language or model planning later; the model emits plans and never mutates paths directly.
-

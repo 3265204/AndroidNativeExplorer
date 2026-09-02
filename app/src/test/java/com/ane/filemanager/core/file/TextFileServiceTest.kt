@@ -33,11 +33,13 @@ class TextFileServiceTest {
         val expectedText = "ANE 文本\nsecond line"
         PluginTextEncoding.entries.forEach { encoding ->
             val file = temporary.newFile("${encoding.name}.txt")
+            val encoded = TextFileService.encode(expectedText, encoding)
             TextFileService.write(file, expectedText, encoding)
 
             val loaded = TextFileService.read(file)
             assertEquals(expectedText, loaded.text)
             assertEquals(encoding, loaded.encoding)
+            assertArrayEquals(encoded, file.readBytes())
             assertArrayEquals(expectedBom(encoding), file.readBytes().take(expectedBom(encoding).size).toByteArray())
         }
     }

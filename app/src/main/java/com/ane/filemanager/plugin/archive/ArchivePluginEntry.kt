@@ -10,6 +10,8 @@ import com.ane.filemanager.plugin.api.PluginHost
 import com.ane.filemanager.plugin.api.PluginSelectionActionProvider
 import com.ane.filemanager.plugin.api.PluginTaskResult
 import com.ane.filemanager.plugin.api.ui.ui
+import com.ane.filemanager.plugin.api.file.fileQueries
+import com.ane.filemanager.plugin.api.file.outputs
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
@@ -64,15 +66,27 @@ class ArchivePluginEntry : AnePlugin, PluginSelectionActionProvider, PluginFileI
 
     private fun compress(sources: List<File>, format: WritableArchiveFormat, host: PluginHost) {
         host.execute(host.activity.getString(R.string.archive_status_compressing), {
+            var outputSession: com.ane.filemanager.plugin.api.file.AnePluginOutputSession? = null
             try {
-                val output = ArchiveCompressor.compress(
+                val fallback = host.activity.getString(R.string.archive_default_name)
+                val parent = sources.firstOrNull()?.parentFile
+                    ?.let { host.fileQueries.resolve(it.absolutePath) }
+                    ?: return@execute PluginTaskResult(false, host.activity.getString(R.string.archive_error_compress_failed))
+                outputSession = host.outputs.begin(
+                    parent,
+                    ArchiveCompressor.suggestedOutputName(sources, format, fallback)
+                )
+                ArchiveCompressor.compressTo(
                     sources,
                     format,
-                    host.activity.getString(R.string.archive_default_name)
+                    File(outputSession.stagingPath)
                 )
-                PluginTaskResult(true, outputPath = output.absolutePath, outputCreated = true)
+                val output = outputSession.commit()
+                PluginTaskResult.recordedOutput(output.path)
             } catch (_: Exception) {
                 PluginTaskResult(false, host.activity.getString(R.string.archive_error_compress_failed))
+            } finally {
+                outputSession?.close()
             }
         }) { result ->
             if (result.success) host.toast(host.activity.getString(R.string.archive_compression_complete))
@@ -140,13 +154,21 @@ class ArchivePluginEntry : AnePlugin, PluginSelectionActionProvider, PluginFileI
     private fun extract(source: File, password: CharArray?, host: PluginHost) {
         val error = AtomicReference<ArchivePluginError?>()
         host.execute(host.activity.getString(R.string.archive_status_extracting), {
+            var outputSession: com.ane.filemanager.plugin.api.file.AnePluginOutputSession? = null
             try {
-                when (val result = ArchiveExtractor.extract(source, password)) {
-                    is ArchivePluginResult.Success -> PluginTaskResult(
-                        success = true,
-                        outputPath = result.value.absolutePath,
-                        outputCreated = true
+                val parent = source.parentFile?.let { host.fileQueries.resolve(it.absolutePath) }
+                    ?: return@execute PluginTaskResult(
+                        false,
+                        host.activity.getString(R.string.archive_error_extract_failed, source.name)
                     )
+                outputSession = host.outputs.begin(parent, ArchiveExtractor.suggestedOutputName(source))
+                when (val result = ArchiveExtractor.extractTo(
+                    source,
+                    File(outputSession.stagingPath),
+                    password
+                )) {
+                    is ArchivePluginResult.Success ->
+                        PluginTaskResult.recordedOutput(outputSession.commit().path)
                     is ArchivePluginResult.Failure -> {
                         error.set(result.error)
                         result.asTask(host)
@@ -154,6 +176,7 @@ class ArchivePluginEntry : AnePlugin, PluginSelectionActionProvider, PluginFileI
                 }
             } finally {
                 password?.fill('\u0000')
+                outputSession?.close()
             }
         }) { result ->
             if (!result.success && error.get() in setOf(

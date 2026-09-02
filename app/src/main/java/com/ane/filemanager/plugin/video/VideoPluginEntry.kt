@@ -3,7 +3,6 @@ package com.ane.filemanager.plugin.video
 import com.ane.filemanager.plugin.api.AneIntentPluginEntry
 import com.ane.filemanager.plugin.api.PluginFile
 import com.ane.filemanager.plugin.video.ui.VideoPlayerActivity
-import java.io.File
 
 class VideoPluginEntry : AneIntentPluginEntry(
     VideoPlayerActivity::class.java,
@@ -16,5 +15,4 @@ internal object VideoPluginFiles {
     )
 
     fun supports(file: PluginFile): Boolean = file.extension.lowercase() in extensions
-    fun accepts(file: File): Boolean = file.isFile && file.extension.lowercase() in extensions
 }

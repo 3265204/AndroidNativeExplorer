@@ -1,7 +1,6 @@
 package com.ane.filemanager.plugin.audio.ui
 
 import android.app.Activity
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
@@ -19,30 +18,32 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import com.ane.filemanager.R
-import com.ane.filemanager.core.file.SiblingFileSequence
-import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.plugin.api.AneIntentPluginEntry
+import com.ane.filemanager.plugin.api.AnePluginHostSessions
+import com.ane.filemanager.plugin.api.file.AnePluginFileSequence
+import com.ane.filemanager.plugin.api.file.fileQueries
 import com.ane.filemanager.plugin.api.ui.AneMediaSequenceNavigation
 import com.ane.filemanager.plugin.api.ui.AneMediaSequenceStage
 import com.ane.filemanager.plugin.api.ui.AneMediaStageStyle
 import com.ane.filemanager.plugin.api.ui.AneTextRole
 import com.ane.filemanager.plugin.api.ui.AneTextTone
+import com.ane.filemanager.plugin.api.ui.AnePluginUi
+import com.ane.filemanager.plugin.api.ui.mediaSequenceStage
+import com.ane.filemanager.plugin.api.ui.ui
 import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
 import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
 import com.ane.filemanager.plugin.audio.AudioPluginFiles
-import com.ane.filemanager.ui.HostUi
 import java.io.File
 import java.util.Locale
 
 class AudioPlayerActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
-    override fun attachBaseContext(base: Context) {
-        super.attachBaseContext(AppLanguage.wrapSystem(base))
-    }
     private var player: MediaPlayer? = null
     private var artwork: Bitmap? = null
-    private lateinit var playlist: SiblingFileSequence
+    private lateinit var playlist: AnePluginFileSequence
+    private lateinit var pluginUi: AnePluginUi
+    private var pluginSessionId: String? = null
     private lateinit var sequenceStage: AneMediaSequenceStage
     private lateinit var albumView: ImageView
     private lateinit var noteView: TextView
@@ -73,16 +74,20 @@ class AudioPlayerActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        pluginSessionId = intent.getStringExtra(AneIntentPluginEntry.EXTRA_HOST_SESSION_ID)
+        val host = AnePluginHostSessions.resolve(pluginSessionId)
         val file = (state?.getString(STATE_PATH)
-            ?: intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH))?.let(::File)
-        if (file == null || !file.isFile) {
+            ?: intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH))
+            ?.let { path -> host?.fileQueries?.resolve(path) }
+        if (host == null || file == null || !file.toFile().isFile || !AudioPluginFiles.supports(file)) {
             Toast.makeText(this, R.string.audio_file_missing, Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-        playlist = SiblingFileSequence.create(file, AudioPluginFiles::accepts)
+        playlist = host.fileQueries.siblingSequence(file, AudioPluginFiles::supports)
         resumePosition = state?.getInt(STATE_POSITION) ?: 0
-        val palette = HostUi.theme(this)
+        pluginUi = host.ui
+        val palette = pluginUi.theme
         applyAneSystemBars(palette)
 
         val root = LinearLayout(this).apply {
@@ -90,9 +95,8 @@ class AudioPlayerActivity : Activity() {
             setBackgroundColor(palette.background)
             applyAneSystemInsets()
         }
-        sequenceStage = HostUi.mediaSequenceStage(
+        sequenceStage = pluginUi.mediaSequenceStage(
             context = this,
-            theme = palette,
             navigationLabel = getString(R.string.audio_back_symbol),
             navigationDescription = getString(R.string.audio_screen_back),
             onNavigate = ::finish,
@@ -102,9 +106,8 @@ class AudioPlayerActivity : Activity() {
         )
 
         val stage = sequenceStage.stage
-        val artworkViews = HostUi.attachMediaArtwork(
+        val artworkViews = pluginUi.attachMediaArtwork(
             this,
-            palette,
             stage,
             getString(R.string.audio_note_symbol)
         )
@@ -112,19 +115,17 @@ class AudioPlayerActivity : Activity() {
         noteView = artworkViews.placeholder
 
         val controls = LinearLayout(this).apply {
-            HostUi.configureMediaControls(this)
+            pluginUi.configureMediaControls(this)
         }
         val times = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        elapsed = HostUi.text(
+        elapsed = pluginUi.text(
             this,
-            palette,
             getString(R.string.audio_zero_time),
             AneTextRole.CAPTION,
             AneTextTone.MUTED
         )
-        durationLabel = HostUi.text(
+        durationLabel = pluginUi.text(
             this,
-            palette,
             getString(R.string.audio_zero_time),
             AneTextRole.CAPTION,
             AneTextTone.MUTED
@@ -145,9 +146,8 @@ class AudioPlayerActivity : Activity() {
                 }
             })
         }
-        val playback = HostUi.mediaPlaybackControls(
+        val playback = pluginUi.mediaPlaybackControls(
             context = this,
-            theme = palette,
             previousSymbol = getString(R.string.audio_previous_symbol),
             previousDescription = getString(R.string.audio_previous),
             playSymbol = getString(R.string.audio_play_symbol),
@@ -195,8 +195,8 @@ class AudioPlayerActivity : Activity() {
         durationLabel.setText(R.string.audio_zero_time)
         playButton.isEnabled = false
         updatePlayButton(false)
-        loadArtwork(playlist.current)
-        preparePlayer(playlist.current)
+        loadArtwork(playlist.current.toFile())
+        preparePlayer(playlist.current.toFile())
     }
 
     private fun sequenceNavigation() = AneMediaSequenceNavigation(
@@ -300,7 +300,7 @@ class AudioPlayerActivity : Activity() {
     override fun onSaveInstanceState(state: Bundle) {
         state.putInt(STATE_POSITION, try { player?.currentPosition ?: resumePosition }
             catch (_: IllegalStateException) { resumePosition })
-        state.putString(STATE_PATH, playlist.current.absolutePath)
+        state.putString(STATE_PATH, playlist.current.path)
         super.onSaveInstanceState(state)
     }
 
@@ -311,6 +311,7 @@ class AudioPlayerActivity : Activity() {
         player = null
         artwork?.recycle()
         artwork = null
+        if (!isChangingConfigurations) AnePluginHostSessions.release(pluginSessionId)
         super.onDestroy()
     }
 

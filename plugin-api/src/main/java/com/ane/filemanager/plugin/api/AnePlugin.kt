@@ -54,8 +54,29 @@ data class PluginTaskResult(
     val success: Boolean,
     val message: String? = null,
     val outputPath: String? = null,
+    /**
+     * Legacy compatibility flag. True means the plugin created [outputPath] outside a host output
+     * transaction and the host must still register it in history. It does not merely mean that the
+     * path is newly created. New writers should use [recordedOutput] or [untrackedCreatedOutput].
+     */
     val outputCreated: Boolean = false
-)
+) {
+    companion object {
+        fun recordedOutput(path: String, message: String? = null) = PluginTaskResult(
+            success = true,
+            message = message,
+            outputPath = path,
+            outputCreated = false
+        )
+
+        fun untrackedCreatedOutput(path: String, message: String? = null) = PluginTaskResult(
+            success = true,
+            message = message,
+            outputPath = path,
+            outputCreated = true
+        )
+    }
+}
 
 interface PluginHost {
     val activity: Activity
@@ -66,6 +87,7 @@ interface PluginHost {
     fun toast(message: String)
     fun requestPassword(title: String, callback: (CharArray?) -> Unit)
     fun execute(label: String, task: () -> PluginTaskResult, callback: (PluginTaskResult) -> Unit = {})
+    /** Legacy direct-output hook; [created] means the host must register an undo-history node. */
     fun reportOutput(path: String, created: Boolean)
     /** API v3: opens a real PTY owned by the host. Callbacks arrive on a background thread. */
     fun openTerminal(

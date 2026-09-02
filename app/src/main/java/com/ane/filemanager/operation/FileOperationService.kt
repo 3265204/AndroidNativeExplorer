@@ -16,6 +16,7 @@ internal enum class FileFailure {
     COPY_FAILED,
     MOVE_FAILED,
     PARTIAL_MOVE,
+    WRITE_FAILED,
     HISTORY_NODE_MISSING,
     UNKNOWN
 }

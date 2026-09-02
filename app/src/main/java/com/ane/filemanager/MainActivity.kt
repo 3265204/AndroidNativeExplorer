@@ -3,10 +3,8 @@ package com.ane.filemanager
 import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
-import android.content.ClipData
 import android.content.Context
 import android.content.Intent
-import android.app.PendingIntent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -14,21 +12,17 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import android.view.View
-import android.webkit.MimeTypeMap
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.text.InputType
 import com.ane.filemanager.operation.FileProblem
 import com.ane.filemanager.operation.fileProblemMessage
-import com.ane.filemanager.openwith.ChosenAppReceiver
-import com.ane.filemanager.openwith.OpenWithStore
-import com.ane.filemanager.provider.LocalFileProvider
+import com.ane.filemanager.interaction.FileInteractionService
+import com.ane.filemanager.core.file.FileQueryService
 import com.ane.filemanager.localization.AppLanguage
-import com.ane.filemanager.sharing.ShareMimeTypes
 import com.ane.filemanager.ui.FileManagerView
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
-import com.ane.filemanager.ui.search.CurrentFolderSearch
 import java.io.File
 
 class MainActivity : Activity() {
@@ -36,6 +30,7 @@ class MainActivity : Activity() {
     private lateinit var fileView: FileManagerView
     private var fullscreenOverlay: View? = null
     private var fullscreenOverlayBack: (() -> Unit)? = null
+    private val fileInteractions by lazy { FileInteractionService(this) }
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(AppLanguage.wrap(base))
@@ -155,7 +150,7 @@ class MainActivity : Activity() {
             cancelLabel = getString(R.string.dialog_cancel),
             items = files,
             label = File::getName,
-            filter = CurrentFolderSearch::matches,
+            filter = FileQueryService::matchingName,
             onSelected = callback
         )
     }
@@ -194,100 +189,10 @@ class MainActivity : Activity() {
         )
     }
 
-    fun openFile(file: File, forceChooser: Boolean = false): Boolean {
-        val ext = fileExtension(file)
-        val mime = mimeType(file)
-        val uri = LocalFileProvider.uriFor(this, file)
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mime)
-            clipData = ClipData.newRawUri(file.name, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        val associationKey = OpenWithStore.associationKey(mime, ext)
-        if (!forceChooser) {
-            OpenWithStore.get(this, associationKey)?.let { component ->
-                if (launchExternal(Intent(intent).setComponent(component))) return true
-                OpenWithStore.remove(this, associationKey)
-            }
-        }
-        chooseOpenMode(file, intent, associationKey)
-        return true
-    }
+    fun openFile(file: File, forceChooser: Boolean = false): Boolean =
+        fileInteractions.open(file, forceChooser)
 
-    fun shareFiles(files: List<File>): Boolean {
-        if (files.isEmpty() || files.any { !it.isFile }) return false
-
-        val uris = ArrayList(files.map { LocalFileProvider.uriFor(this, it) })
-        val mimeTypes = files.map(::mimeType)
-        val target = Intent(if (files.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
-            type = ShareMimeTypes.common(mimeTypes)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            clipData = ClipData.newRawUri(files.first().name, uris.first()).apply {
-                uris.drop(1).forEach { addItem(ClipData.Item(it)) }
-            }
-            if (uris.size == 1) {
-                putExtra(Intent.EXTRA_STREAM, uris.first())
-            } else {
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-                putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.distinct().toTypedArray())
-            }
-        }
-        val chooser = Intent.createChooser(target, getString(R.string.share_file_chooser))
-        return launchExternal(chooser, R.string.no_share_app)
-    }
-
-    private fun chooseOpenMode(file: File, target: Intent, associationKey: String) {
-        AneDialog.message(
-            this,
-            getString(R.string.open_mode_title),
-            getString(R.string.open_mode_message, file.name),
-            listOf(
-                AneDialogAction(getString(R.string.dialog_cancel)),
-                AneDialogAction(getString(R.string.open_mode_once)) {
-                    launchChooser(target, associationKey = null)
-                },
-                AneDialogAction(getString(R.string.open_mode_always), primary = true) {
-                    launchChooser(target, associationKey)
-                }
-            )
-        )
-    }
-
-    private fun launchChooser(target: Intent, associationKey: String?) {
-        val chooser = if (associationKey == null) {
-            Intent.createChooser(target, getString(R.string.choose_file_app))
-        } else {
-            val callback = Intent(this, ChosenAppReceiver::class.java)
-                .putExtra(ChosenAppReceiver.EXTRA_ASSOCIATION_KEY, associationKey)
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
-            val sender = PendingIntent.getBroadcast(
-                this,
-                nextChooserRequestCode++,
-                callback,
-                flags
-            ).intentSender
-            Intent.createChooser(target, getString(R.string.choose_file_app), sender)
-        }
-        launchExternal(chooser)
-    }
-
-    private fun launchExternal(intent: Intent, failureMessage: Int = R.string.no_viewer): Boolean = try {
-        startActivity(intent)
-        true
-    } catch (_: ActivityNotFoundException) {
-        toast(getString(failureMessage))
-        false
-    } catch (_: SecurityException) {
-        toast(getString(failureMessage))
-        false
-    }
-
-    private fun fileExtension(file: File): String =
-        MimeTypeMap.getFileExtensionFromUrl(file.name).lowercase()
-
-    private fun mimeType(file: File): String =
-        MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExtension(file)) ?: "*/*"
+    fun shareFiles(files: List<File>): Boolean = fileInteractions.share(files)
 
     fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
@@ -303,10 +208,6 @@ class MainActivity : Activity() {
                 AneDialogAction(getString(R.string.dialog_cancel)),
                 AneDialogAction(getString(R.string.dialog_exit_confirm), primary = true, run = ::finish)
             ))
-    }
-
-    private companion object {
-        var nextChooserRequestCode = 1
     }
 
 }

@@ -188,7 +188,9 @@ host.execute("Read text", {
 })
 ```
 
-`readText`/`writeText` are synchronous capabilities and must not be called directly on the main thread. A `PluginTextTooLargeException` is thrown when exceeding the default size limit. The current backend still uses normal app permissions to access paths, but the plugin no longer reads text via `File(path)` itself, keeping a host access point for a future file-backend switch.
+`readText`/`writeText` are synchronous capabilities and must not be called directly on the main thread. A `PluginTextTooLargeException` is thrown when exceeding the default size limit. Writes run through the host file transaction queue and become one session-history node; plugins must not call the host-internal `TextFileService` directly.
+
+Plugins that create files or directories, such as archive and conversion plugins, use `PluginHost.outputs`. They write domain data only to the returned staging path; the host owns final placement, conflict naming, commit, and undo. Return committed paths with `PluginTaskResult.recordedOutput(path)`. The legacy `outputCreated = true` flag is reserved for outputs created outside a host output transaction that still need host history registration. Read-only path resolution and sibling sequences come from `PluginHost.fileQueries`. Bundled media Activities receive an opaque host session in their launch Intent and obtain UI and query capabilities from the API rather than importing `HostUi`, `AppLanguage`, or `SiblingFileSequence`.
 
 ## 3. plugin.json
 

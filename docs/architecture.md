@@ -57,9 +57,9 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 
 ### 文件内容能力
 
-`plugin-api/.../api/file` 声明 `PluginHost.files`。当前宿主通过 `PluginFileServiceProvider` 提供 `core/file/TextFileService`，统一负责 UTF-8、UTF-8 BOM、UTF-16LE、UTF-16BE 的检测、大小限制、读取和保留编码写回。插件不再自行实现 BOM 探测或直接创建 `FileOutputStream`；导入插件应在 `host.execute` 的后台任务中调用该同步能力。
+`plugin-api/.../api/file` 声明 `PluginHost.files`、`fileQueries` 与 `outputs`。宿主统一负责文本编码检测、大小限制和保留编码写回；文本写入通过会话级 `FileTransactionService` 串行执行并进入树形历史。`fileQueries` 提供路径解析与同目录序列。需要生成文件或目录的插件先通过 `outputs.begin` 取得暂存路径，写入完成后由宿主选择无冲突目标、提交并创建一个历史节点。
 
-`core/file/SiblingFileSequence` 是宿主内部共享业务实现：它扫描父目录、按本地 Collator 排序、定位当前文件并提供 previous/next。图片、音频和视频插件只提供自己的格式过滤器；该类不公开媒体类型，也没有并入第三方插件 ABI。
+`core/file/SiblingFileSequence` 是宿主内部共享业务实现：它扫描父目录、按本地 Collator 排序、定位当前文件并提供 previous/next。图片、音频和视频插件只提供自己的格式过滤器；宿主通过只读 `PluginHost.fileQueries` 返回公共序列契约，不向插件暴露内部实现或媒体类型。
 
 ### menu
 
@@ -101,7 +101,7 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 2. `FileOperationService`：返回结构化 `FileResult`，把异常转换为 `FileProblem`。
 3. `FileActionController`：连接选择、对话框、后台线程、树形操作历史和 UI 提示。
 
-复制、移动、删除和撤回通过命名的单线程执行器串行执行，避免多个事务同时修改相同路径或回收目录。控制器关闭后不再接受新任务；已排队的事务安全完成，但不再回调失效 Activity。
+`FileTransactionService` 是会话内文件执行器、回收 payload 与历史树的唯一所有者。普通 UI、文本插件和插件输出提交共用它的单线程队列，避免形成彼此不可见的修改历史。`FileActionController` 只保留提示、选区和失败交互；事务服务由组合根最后关闭。
 
 删除并非立即销毁：文件会移动到存储根目录下的 `.ane-filemanager-trash`。`FileHistoryController` 保存带父子关系的双向动作；撤回后执行新操作会保留原分支，并可重做到最新子分支或按节点切换分支。记录仍只保存在当前进程会话内，没有固定步数上限；重新启动应用时会清理旧回收内容，因此历史不是跨进程持久化功能。
 
@@ -115,9 +115,9 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 
 当前随应用提供的插件包括：
 
-- 图片进入 `image/ui/ImageActivity`，格式过滤和缩放由 image 插件负责，同目录导航使用 `SiblingFileSequence`。
-- 视频进入 `video/ui/VideoPlayerActivity`，播放由 video 插件负责，同目录导航使用 `SiblingFileSequence`。
-- 音频进入 `audio/ui/AudioPlayerActivity`，播放与进度由 audio 插件负责，同目录导航使用 `SiblingFileSequence`。
+- 图片进入 `image/ui/ImageActivity`，格式过滤和缩放由 image 插件负责，同目录导航使用 `PluginHost.fileQueries` 的序列契约。
+- 视频进入 `video/ui/VideoPlayerActivity`，播放由 video 插件负责，同目录导航使用同一查询契约。
+- 音频进入 `audio/ui/AudioPlayerActivity`，播放与进度由 audio 插件负责，同目录导航使用同一查询契约。
 - 文本进入 `TextEditorActivity`，通过 `TextFileService` 读取和保留编码写回；高亮、惯性滚动和缩进仍由 text 插件负责。
 - 终端由 `TerminalConsoleDialog` 把领域内容提交给 `PluginHost.ui`；`TerminalSessionController` 管理 PTY 生命周期，屏幕键和硬件键都通过 `PluginHost.input` 进入宿主 `HostPluginInput`，`TerminalView` 只负责终端绘制、模拟器和输入连接。
 

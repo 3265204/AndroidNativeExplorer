@@ -1,17 +1,22 @@
 package com.ane.filemanager.pluginmanager
 
 import android.text.InputType
-import android.webkit.MimeTypeMap
 import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
-import com.ane.filemanager.core.file.TextFileService
+import com.ane.filemanager.core.file.PluginFileQueryService
+import com.ane.filemanager.core.file.PluginOutputService
+import com.ane.filemanager.core.file.TransactionalPluginFiles
+import com.ane.filemanager.core.file.asPluginFile
 import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.input.HostPluginInput
 import com.ane.filemanager.plugin.api.file.PluginFileServiceProvider
+import com.ane.filemanager.plugin.api.file.PluginFileQueryProvider
+import com.ane.filemanager.plugin.api.file.PluginOutputProvider
 import com.ane.filemanager.plugin.api.input.PluginInputProvider
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.PluginUiProvider
 import com.ane.filemanager.plugin.api.AnePlugin
+import com.ane.filemanager.plugin.api.AnePluginHostSessions
 import com.ane.filemanager.plugin.api.PluginFile
 import com.ane.filemanager.plugin.api.PluginFileAction
 import com.ane.filemanager.plugin.api.PluginFileIcon
@@ -25,6 +30,7 @@ import com.ane.filemanager.plugin.api.PluginTerminalListener
 import com.ane.filemanager.plugin.api.PluginTerminalRequest
 import com.ane.filemanager.plugin.api.PluginTerminalSession
 import com.ane.filemanager.pluginmanager.pty.HostPtyTerminalSession
+import com.ane.filemanager.operation.FileTransactionService
 import com.ane.filemanager.ui.PluginUiService
 import dalvik.system.DexClassLoader
 import java.io.File
@@ -49,6 +55,7 @@ private data class PluginRecord(
 /** In-process plugin host. Bundled and imported plugins are discovered from manifests, never a hardcoded type list. */
 internal class PluginRegistry(
     private val activity: MainActivity,
+    transactions: FileTransactionService,
     private val setBusy: (String?) -> Unit,
     private val reportOutput: (File, Boolean) -> Unit
 ) {
@@ -62,13 +69,20 @@ internal class PluginRegistry(
         PluginHost,
         PluginUiProvider,
         PluginInputProvider,
-        PluginFileServiceProvider {
+        PluginFileServiceProvider,
+        PluginFileQueryProvider,
+        PluginOutputProvider {
         override val activity get() = this@PluginRegistry.activity
         override val systemLocaleTags get() = AppLanguage.systemLanguageTags(activity)
         override val hostLocaleTags get() = AppLanguage.hostLanguageTags(activity)
         override val pluginUi = PluginUiService(activity)
         override val pluginInput = HostPluginInput
-        override val pluginFiles = TextFileService
+        override val pluginFiles = TransactionalPluginFiles(transactions)
+        override val pluginFileQueries = PluginFileQueryService
+        override val pluginOutputs = PluginOutputService(
+            File(activity.cacheDir, "ane-plugin-output"),
+            transactions
+        )
 
         override fun toast(message: String) = activity.toast(message)
 
@@ -101,7 +115,8 @@ internal class PluginRegistry(
                     val message = result.message
                     if (!result.success && !message.isNullOrBlank()) activity.toast(message)
                     if (result.success) {
-                        result.outputPath?.let { reportOutput(File(it), result.outputCreated) }
+                        val registerHistory = result.outputCreated
+                        result.outputPath?.let { reportOutput(File(it), registerHistory) }
                     }
                     callback(result)
                 }
@@ -109,7 +124,8 @@ internal class PluginRegistry(
         }
 
         override fun reportOutput(path: String, created: Boolean) {
-            reportOutput(File(path), created)
+            val registerHistory = created
+            reportOutput(File(path), registerHistory)
         }
 
         override fun openTerminal(
@@ -230,6 +246,7 @@ internal class PluginRegistry(
     fun close() {
         if (closed.compareAndSet(false, true)) {
             unloadAll()
+            AnePluginHostSessions.releaseHost(pluginHost)
             executor.shutdown()
         }
     }
@@ -291,13 +308,6 @@ internal class PluginRegistry(
         runCatching(run).onFailure {
             activity.toast(activity.getString(R.string.plugin_runtime_error, record.descriptor.name))
         }
-    }
-
-    private fun File.asPluginFile(): PluginFile {
-        val extension = extension.lowercase()
-        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
-            ?: "application/octet-stream"
-        return PluginFile(absolutePath, name, extension, mime)
     }
 
     private fun isEnabled(descriptor: PluginDescriptor): Boolean = resolvePluginEnabled(

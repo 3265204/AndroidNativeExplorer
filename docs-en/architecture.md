@@ -57,9 +57,9 @@ Plugins submit only semantic parameters, such as page title, breadcrumb, previou
 
 ### File content capability
 
-`plugin-api/.../api/file` declares `PluginHost.files`. The host currently provides `core/file/TextFileService` through `PluginFileServiceProvider`, which uniformly handles detection, size limits, reading and encoding-preserving write-back for UTF-8, UTF-8 BOM, UTF-16LE and UTF-16BE. Plugins no longer implement BOM detection themselves or create `FileOutputStream` directly; imported plugins should call this synchronous capability inside a background task of `host.execute`.
+`plugin-api/.../api/file` declares `PluginHost.files`, `fileQueries`, and `outputs`. The host centralizes text encoding detection, size limits, and encoding-preserving writes; text writes are serialized by the session-wide `FileTransactionService` and enter branching history. `fileQueries` supplies path resolution and sibling sequences. Plugins that generate files or directories write to an `outputs.begin` staging path, then let the host choose the conflict-free destination, commit it, and create one history node.
 
-`core/file/SiblingFileSequence` is a host-internal shared business implementation: it scans the parent directory, sorts by the local Collator, locates the current file and provides previous/next. The image, audio and video plugins each provide only their own format filters; this class exposes no media types and is not merged into the third-party plugin ABI.
+`core/file/SiblingFileSequence` remains a host-internal implementation. Image, audio, and video plugins provide only their format filters; the host returns a read-only sequence contract through `PluginHost.fileQueries` without exposing the implementation or media-specific types.
 
 ### menu
 
@@ -100,7 +100,7 @@ File operations are layered in three levels:
 2. `FileOperationService`: returns structured `FileResult`, converting exceptions to `FileProblem`.
 3. `FileActionController`: connects selection, dialogs, background threads, branching operation history and UI prompts.
 
-Copy, move, delete and undo run serially on a named single-thread executor, avoiding multiple transactions concurrently modifying the same path or recycle directory. After the controller is closed, it no longer accepts new tasks; queued transactions complete safely but no longer call back a destroyed Activity.
+`FileTransactionService` is the sole session owner of the file worker, trash payloads, and history tree. Normal UI actions, text-plugin writes, and plugin-output commits share its single-thread queue. `FileActionController` now owns presentation, selection, and failure interaction only; the composition root closes the transaction service last.
 
 Deletion is not immediate destruction: the file is moved to `.ane-filemanager-trash` under the storage root. `FileHistoryController` stores bidirectional actions with parent/child relationships; recording after undo preserves the old branch, and history can redo the newest child or check out a node explicitly. Records remain process-session only, with no fixed step cap. Old trash is cleaned on restart, so history is not persisted across processes.
 
@@ -114,9 +114,9 @@ Plugins that only filter by file and launch one Activity use `AneIntentPluginEnt
 
 The plugins shipped with the app currently include:
 
-- Images enter `image/ui/ImageActivity`; format filtering and zoom are handled by the image plugin, and same-directory navigation uses `SiblingFileSequence`.
-- Videos enter `video/ui/VideoPlayerActivity`; playback is handled by the video plugin, and same-directory navigation uses `SiblingFileSequence`.
-- Audio enters `audio/ui/AudioPlayerActivity`; playback and progress are handled by the audio plugin, and same-directory navigation uses `SiblingFileSequence`.
+- Images enter `image/ui/ImageActivity`; format filtering and zoom stay in the image plugin, while same-directory navigation uses the `PluginHost.fileQueries` sequence contract.
+- Videos enter `video/ui/VideoPlayerActivity`; playback stays in the video plugin and navigation uses the same query contract.
+- Audio enters `audio/ui/AudioPlayerActivity`; playback and progress stay in the audio plugin and navigation uses the same query contract.
 - Text enters `TextEditorActivity`, reading and writing back with preserved encoding through `TextFileService`; highlighting, inertial scrolling and indentation remain in the text plugin.
 - The terminal submits its domain content to `PluginHost.ui` via `TerminalConsoleDialog`; `TerminalSessionController` manages the PTY lifecycle, and both on-screen keys and hardware keys enter the host `HostPluginInput` through `PluginHost.input`, while `TerminalView` only handles terminal drawing, emulator and input connection.
 

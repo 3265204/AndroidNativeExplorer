@@ -1,7 +1,6 @@
 package com.ane.filemanager.plugin.image.ui
 
 import android.app.Activity
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -11,42 +10,48 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.Toast
 import com.ane.filemanager.R
-import com.ane.filemanager.core.file.SiblingFileSequence
-import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.plugin.api.AneIntentPluginEntry
+import com.ane.filemanager.plugin.api.AnePluginHostSessions
+import com.ane.filemanager.plugin.api.PluginFile
+import com.ane.filemanager.plugin.api.file.AnePluginFileSequence
+import com.ane.filemanager.plugin.api.file.fileQueries
 import com.ane.filemanager.plugin.api.ui.AneMediaDirection
 import com.ane.filemanager.plugin.api.ui.AneMediaSequenceNavigation
 import com.ane.filemanager.plugin.api.ui.AneMediaSequenceStage
+import com.ane.filemanager.plugin.api.ui.AnePluginUi
+import com.ane.filemanager.plugin.api.ui.mediaSequenceStage
+import com.ane.filemanager.plugin.api.ui.ui
 import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
 import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
 import com.ane.filemanager.plugin.image.ImagePluginFiles
-import com.ane.filemanager.ui.HostUi
 import java.io.File
 
 class ImageActivity : Activity() {
     private var bitmap: Bitmap? = null
-    private lateinit var playlist: SiblingFileSequence
+    private lateinit var playlist: AnePluginFileSequence
+    private lateinit var pluginUi: AnePluginUi
+    private var pluginSessionId: String? = null
     private lateinit var sequenceStage: AneMediaSequenceStage
     private lateinit var imageView: ZoomableImageView
     private lateinit var progress: ProgressBar
     private var loadGeneration = 0
     private var switching = false
 
-    override fun attachBaseContext(base: Context) {
-        super.attachBaseContext(AppLanguage.wrapSystem(base))
-    }
-
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        pluginSessionId = intent.getStringExtra(AneIntentPluginEntry.EXTRA_HOST_SESSION_ID)
+        val host = AnePluginHostSessions.resolve(pluginSessionId)
         val file = (state?.getString(STATE_PATH)
-            ?: intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH))?.let(::File)
-        if (file == null || !file.isFile) {
+            ?: intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH))
+            ?.let { path -> host?.fileQueries?.resolve(path) }
+        if (host == null || file == null || !file.toFile().isFile || !ImagePluginFiles.supports(file)) {
             Toast.makeText(this, R.string.image_file_missing, Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-        playlist = SiblingFileSequence.create(file, ImagePluginFiles::accepts)
-        val palette = HostUi.theme(this)
+        playlist = host.fileQueries.siblingSequence(file, ImagePluginFiles::supports)
+        pluginUi = host.ui
+        val palette = pluginUi.theme
         applyAneSystemBars(palette)
 
         val root = LinearLayout(this).apply {
@@ -54,9 +59,8 @@ class ImageActivity : Activity() {
             setBackgroundColor(palette.background)
             applyAneSystemInsets()
         }
-        sequenceStage = HostUi.mediaSequenceStage(
+        sequenceStage = pluginUi.mediaSequenceStage(
             context = this,
-            theme = palette,
             navigationLabel = getString(R.string.image_back_symbol),
             navigationDescription = getString(R.string.image_screen_back),
             onNavigate = ::finish,
@@ -69,7 +73,7 @@ class ImageActivity : Activity() {
         imageView.onSwipeLeft = { switchImage(1) }
         imageView.onSwipeRight = { switchImage(-1) }
         stage.addView(imageView, android.widget.FrameLayout.LayoutParams(-1, -1))
-        progress = HostUi.attachMediaProgress(this, stage)
+        progress = pluginUi.attachMediaProgress(this, stage)
         sequenceStage.attachTo(root)
         setContentView(root)
         sequenceStage.refresh()
@@ -77,7 +81,7 @@ class ImageActivity : Activity() {
     }
 
     override fun onSaveInstanceState(state: Bundle) {
-        state.putString(STATE_PATH, playlist.current.absolutePath)
+        state.putString(STATE_PATH, playlist.current.path)
         super.onSaveInstanceState(state)
     }
 
@@ -85,6 +89,7 @@ class ImageActivity : Activity() {
         loadGeneration++
         bitmap?.recycle()
         bitmap = null
+        if (!isChangingConfigurations) AnePluginHostSessions.release(pluginSessionId)
         super.onDestroy()
     }
 
@@ -96,7 +101,7 @@ class ImageActivity : Activity() {
     private fun animateImageChange(direction: AneMediaDirection) {
         switching = true
         val stageWidth = imageView.width.coerceAtLeast(resources.displayMetrics.widthPixels)
-        HostUi.animateMediaExit(imageView, direction, stageWidth) {
+        pluginUi.animateMediaExit(imageView, direction, stageWidth) {
             imageView.setImageDrawable(null)
             bitmap?.recycle()
             bitmap = null
@@ -104,11 +109,11 @@ class ImageActivity : Activity() {
         }
     }
 
-    private fun loadImage(file: File, direction: AneMediaDirection?) {
+    private fun loadImage(file: PluginFile, direction: AneMediaDirection?) {
         val generation = ++loadGeneration
         progress.visibility = android.view.View.VISIBLE
         Thread {
-            val loaded = try { decodeSampled(file, 4096) } catch (_: Exception) { null }
+            val loaded = try { decodeSampled(file.toFile(), 4096) } catch (_: Exception) { null }
             runOnUiThread {
                 if (isFinishing || isDestroyed || generation != loadGeneration) {
                     loaded?.recycle()
@@ -123,7 +128,7 @@ class ImageActivity : Activity() {
                     imageView.setImageBitmap(loaded)
                     if (direction != null) {
                         val stageWidth = imageView.width.coerceAtLeast(resources.displayMetrics.widthPixels)
-                        HostUi.animateMediaEnter(imageView, direction, stageWidth) {
+                        pluginUi.animateMediaEnter(imageView, direction, stageWidth) {
                             switching = false
                         }
                     } else {

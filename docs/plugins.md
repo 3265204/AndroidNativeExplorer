@@ -188,7 +188,26 @@ host.execute("读取文本", {
 })
 ```
 
-`readText`/`writeText` 是同步能力，不得直接在主线程调用。超过默认大小限制时抛出 `PluginTextTooLargeException`。当前后端仍使用普通应用权限访问路径，但插件不再自行 `File(path)` 读取文本，为以后切换文件后端保留宿主接入点。
+`readText`/`writeText` 是同步能力，不得直接在主线程调用。超过默认大小限制时抛出 `PluginTextTooLargeException`。写入由宿主文件事务队列执行，并作为一个节点进入会话历史；插件不得直接调用宿主内部 `TextFileService`。
+
+压缩、解压、转换等会创建文件的插件应使用 `PluginHost.outputs`。插件只向暂存路径写入领域结果，最终路径、重名处理、提交和撤回由宿主负责：
+
+```kotlin
+host.execute("生成文件", {
+    val session = host.outputs.begin(parentDirectory, "result.zip")
+    try {
+        writeArchive(File(session.stagingPath))
+        val output = session.commit()
+        PluginTaskResult.recordedOutput(output.path)
+    } finally {
+        session.close()
+    }
+})
+```
+
+`recordedOutput` 表示输出已经由 `session.commit()` 登记历史。旧字段 `outputCreated = true` 只用于兼容“插件绕过输出事务创建文件、仍需宿主补登记历史”的情况。
+
+只读的路径解析和同目录文件序列通过 `PluginHost.fileQueries` 获取。内置媒体 Activity 由启动 Intent 携带不透明宿主会话，从 API 取得 UI 与查询能力，不得导入 `HostUi`、`AppLanguage` 或 `SiblingFileSequence` 等宿主实现。
 
 ## 3. plugin.json
 

@@ -1,7 +1,6 @@
 package com.ane.filemanager.plugin.video.ui
 
 import android.app.Activity
-import android.content.Context
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.FrameLayout
@@ -10,49 +9,53 @@ import android.widget.MediaController
 import android.widget.Toast
 import android.widget.VideoView
 import com.ane.filemanager.R
-import com.ane.filemanager.core.file.SiblingFileSequence
-import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.plugin.api.AneIntentPluginEntry
+import com.ane.filemanager.plugin.api.AnePluginHostSessions
+import com.ane.filemanager.plugin.api.file.AnePluginFileSequence
+import com.ane.filemanager.plugin.api.file.fileQueries
 import com.ane.filemanager.plugin.api.ui.AneMediaSequenceNavigation
 import com.ane.filemanager.plugin.api.ui.AneMediaSequenceStage
+import com.ane.filemanager.plugin.api.ui.AnePluginUi
+import com.ane.filemanager.plugin.api.ui.mediaSequenceStage
+import com.ane.filemanager.plugin.api.ui.ui
 import com.ane.filemanager.plugin.api.ui.applyAneMediaSystemBars
 import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
 import com.ane.filemanager.plugin.video.VideoPluginFiles
-import com.ane.filemanager.ui.HostUi
-import java.io.File
 
 class VideoPlayerActivity : Activity() {
 
-    override fun attachBaseContext(base: Context) {
-        super.attachBaseContext(AppLanguage.wrapSystem(base))
-    }
     private lateinit var videoView: VideoView
-    private lateinit var playlist: SiblingFileSequence
+    private lateinit var playlist: AnePluginFileSequence
+    private lateinit var pluginUi: AnePluginUi
+    private var pluginSessionId: String? = null
     private lateinit var sequenceStage: AneMediaSequenceStage
     private var resumePosition = 0
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        pluginSessionId = intent.getStringExtra(AneIntentPluginEntry.EXTRA_HOST_SESSION_ID)
+        val host = AnePluginHostSessions.resolve(pluginSessionId)
         val file = (state?.getString(STATE_PATH)
-            ?: intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH))?.let(::File)
-        if (file == null || !file.isFile) {
+            ?: intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH))
+            ?.let { path -> host?.fileQueries?.resolve(path) }
+        if (host == null || file == null || !file.toFile().isFile || !VideoPluginFiles.supports(file)) {
             Toast.makeText(this, R.string.video_file_missing, Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-        playlist = SiblingFileSequence.create(file, VideoPluginFiles::accepts)
+        playlist = host.fileQueries.siblingSequence(file, VideoPluginFiles::supports)
         resumePosition = state?.getInt(STATE_POSITION) ?: 0
-        val palette = HostUi.theme(this)
+        pluginUi = host.ui
+        val palette = pluginUi.theme
         applyAneMediaSystemBars(palette)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            HostUi.configureMediaRoot(this)
+            pluginUi.configureMediaRoot(this)
             applyAneSystemInsets()
         }
-        sequenceStage = HostUi.mediaSequenceStage(
+        sequenceStage = pluginUi.mediaSequenceStage(
             context = this,
-            theme = palette,
             navigationLabel = getString(R.string.video_back_symbol),
             navigationDescription = getString(R.string.video_screen_back),
             onNavigate = ::finish,
@@ -96,7 +99,7 @@ class VideoPlayerActivity : Activity() {
     }
 
     private fun showCurrentVideo() {
-        videoView.setVideoPath(playlist.current.absolutePath)
+        videoView.setVideoPath(playlist.current.path)
         videoView.requestFocus()
     }
 
@@ -118,12 +121,13 @@ class VideoPlayerActivity : Activity() {
 
     override fun onSaveInstanceState(state: Bundle) {
         state.putInt(STATE_POSITION, if (::videoView.isInitialized) videoView.currentPosition else resumePosition)
-        state.putString(STATE_PATH, playlist.current.absolutePath)
+        state.putString(STATE_PATH, playlist.current.path)
         super.onSaveInstanceState(state)
     }
 
     override fun onDestroy() {
         if (::videoView.isInitialized) videoView.stopPlayback()
+        if (!isChangingConfigurations) AnePluginHostSessions.release(pluginSessionId)
         super.onDestroy()
     }
 

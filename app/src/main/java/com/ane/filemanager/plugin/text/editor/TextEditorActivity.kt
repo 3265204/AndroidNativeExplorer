@@ -1,7 +1,6 @@
 package com.ane.filemanager.plugin.text.editor
 
 import android.app.Activity
-import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,16 +12,21 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.ane.filemanager.R
-import com.ane.filemanager.core.file.TextFileService
-import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.plugin.api.AneIntentPluginEntry
+import com.ane.filemanager.plugin.api.AnePluginHostSessions
+import com.ane.filemanager.plugin.api.PluginFile
+import com.ane.filemanager.plugin.api.PluginHost
+import com.ane.filemanager.plugin.api.file.files
 import com.ane.filemanager.plugin.api.file.PluginTextEncoding
 import com.ane.filemanager.plugin.api.file.PluginTextTooLargeException
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
+import com.ane.filemanager.plugin.api.ui.AneComponents
+import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneTheme
 import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
 import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
-import com.ane.filemanager.ui.HostUi
+import com.ane.filemanager.plugin.api.ui.configureTextEditor
+import com.ane.filemanager.plugin.api.ui.ui
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -32,10 +36,10 @@ class TextEditorActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor { task -> Thread(task, "ane-text-worker") }
     private var highlightFuture: Future<*>? = null
 
-    override fun attachBaseContext(base: Context) {
-        super.attachBaseContext(AppLanguage.wrapSystem(base))
-    }
     private lateinit var file: File
+    private lateinit var pluginFile: PluginFile
+    private lateinit var pluginHost: PluginHost
+    private var pluginSessionId: String? = null
     private lateinit var palette: AneTheme
     private lateinit var editor: InertialEditText
     private lateinit var title: TextView
@@ -70,13 +74,20 @@ class TextEditorActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        pluginSessionId = intent.getStringExtra(AneIntentPluginEntry.EXTRA_HOST_SESSION_ID)
+        pluginHost = AnePluginHostSessions.resolve(pluginSessionId) ?: run {
+            Toast.makeText(this, R.string.text_file_missing, Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
         file = intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH)?.let(::File) ?: File("")
         if (!file.isFile) {
             Toast.makeText(this, R.string.text_file_missing, Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-        palette = HostUi.theme(this)
+        pluginFile = PluginFile(file.absolutePath, file.name, file.extension.lowercase(), "text/plain")
+        palette = pluginHost.ui.theme
         applyAneSystemBars(palette)
         buildUi()
         loadFile()
@@ -88,7 +99,7 @@ class TextEditorActivity : Activity() {
             setBackgroundColor(palette.background)
             applyAneSystemInsets()
         }
-        val top = HostUi.topBar(
+        val top = AneComponents.topBar(
             context = this,
             theme = palette,
             navigationLabel = getString(R.string.text_back_symbol),
@@ -97,7 +108,7 @@ class TextEditorActivity : Activity() {
             onNavigate = ::requestClose
         )
         title = top.title
-        saveButton = HostUi.textActionButton(
+        saveButton = AneComponents.textActionButton(
             context = this,
             theme = palette,
             label = getString(R.string.editor_save),
@@ -106,7 +117,7 @@ class TextEditorActivity : Activity() {
         top.addTrailing(saveButton)
 
         editor = InertialEditText(this).apply {
-            HostUi.configureTextEditor(this, palette)
+            pluginHost.ui.configureTextEditor(this)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setHorizontallyScrolling(CodeHighlighter.prefersNoWrap(file.extension))
@@ -126,7 +137,7 @@ class TextEditorActivity : Activity() {
 
     private fun loadFile() {
         worker.execute {
-            val result = runCatching { TextFileService.read(file) }
+            val result = runCatching { pluginHost.files.readText(pluginFile) }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess {
@@ -179,7 +190,7 @@ class TextEditorActivity : Activity() {
         val savingRevision = revision
         saveButton.isEnabled = false
         worker.execute {
-            val result = runCatching { TextFileService.write(file, text, encoding) }
+            val result = runCatching { pluginHost.files.writeText(pluginFile, text, encoding) }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess {
@@ -216,9 +227,9 @@ class TextEditorActivity : Activity() {
             finish()
             return
         }
-        HostUi.message(
+        AneDialog.message(
             activity = this,
-            theme = HostUi.theme(this, palette.dark),
+            colors = palette,
             title = getString(R.string.editor_discard_title),
             message = getString(R.string.editor_discard_message),
             actions = listOf(
@@ -236,6 +247,7 @@ class TextEditorActivity : Activity() {
         highlightJobToken++
         highlightFuture?.cancel(true)
         worker.shutdownNow()
+        if (!isChangingConfigurations) AnePluginHostSessions.release(pluginSessionId)
         super.onDestroy()
     }
 

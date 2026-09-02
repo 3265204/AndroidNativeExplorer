@@ -44,10 +44,17 @@ internal object TextFileService : AnePluginFiles {
     }
 
     fun write(file: File, text: String, encoding: PluginTextEncoding) {
+        writeBytes(file, encode(text, encoding))
+    }
+
+    internal fun encode(text: String, encoding: PluginTextEncoding): ByteArray {
         val descriptor = descriptor(encoding)
+        return descriptor.bom + text.toByteArray(descriptor.charset)
+    }
+
+    internal fun writeBytes(file: File, bytes: ByteArray) {
         FileOutputStream(file, false).use { output ->
-            if (descriptor.bom.isNotEmpty()) output.write(descriptor.bom)
-            output.write(text.toByteArray(descriptor.charset))
+            output.write(bytes)
             output.flush()
             output.fd.sync()
         }
