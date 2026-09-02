@@ -62,10 +62,26 @@ internal class FileMenuController(private val invalidate: () -> Unit) {
         if (action.children.isEmpty()) return false
         val parentLayer = layers.indexOfFirst { actions -> actions.any { it === action } }
         if (parentLayer < 0) return false
+        val childLayer = parentLayer + 1
+        val currentChildren = layers.getOrNull(childLayer)
+        val alreadyExpanded = currentChildren === action.children || currentChildren == action.children
+        if (alreadyExpanded) {
+            motion.exitMenuLayer(childLayer) {
+                val visibleChildren = layers.getOrNull(childLayer)
+                if (visibleChildren === action.children || visibleChildren == action.children) {
+                    layers = layers.take(childLayer)
+                    invalidate()
+                }
+            }
+            return true
+        }
         layers = layers.take(parentLayer + 1) + listOf(action.children)
+        motion.enterMenuLayer(childLayer)
         invalidate()
         return true
     }
+
+    fun isOpening() = motion.isMenuOpening()
 
     fun renderState() = MenuRenderState(kind, layers, x, y, originX, originY, motion.snapshot())
 }

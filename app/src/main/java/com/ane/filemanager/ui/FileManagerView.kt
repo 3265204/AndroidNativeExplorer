@@ -30,6 +30,7 @@ import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import com.ane.filemanager.ui.menu.FileMenuController
 import com.ane.filemanager.ui.menu.FileMenuCoordinator
+import com.ane.filemanager.ui.model.MenuAction
 import com.ane.filemanager.ui.model.MenuKind
 import com.ane.filemanager.ui.model.RenderState
 import com.ane.filemanager.ui.model.UiInsets
@@ -122,6 +123,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private var downFile: File? = null
     private var downTab = -1
     private var downCloseTab: BrowserTab? = null
+    private var downMenuAction: MenuAction? = null
     private var moved = false
     private var scrolling = false
     private var dockScrolling = false
@@ -443,6 +445,11 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         draggedTab = null; dragCancelHover = false; slideSelecting = false
         slideCandidateFile = null
         downCloseTab = null
+        downMenuAction = if (menu.kind != MenuKind.NONE) {
+            renderer.menuHits.lastOrNull { it.rect.contains(x, y) }?.action
+        } else {
+            null
+        }
         selection.endSlide()
         // The floating action button is visually above list rows and must also win hit testing.
         if (menu.kind == MenuKind.NONE && renderer.isFab(
@@ -521,20 +528,34 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private fun onUp(x: Float, y: Float) {
         handler.removeCallbacks(longPressRunnable)
         if (menu.kind != MenuKind.NONE) {
-            if (!moved && switchOpenMenuFromLauncher(x, y)) {
+            val dismissedKind = menu.kind
+            val releasedAction = renderer.menuHits.lastOrNull { it.rect.contains(x, y) }?.action
+            val action = if (!moved) downMenuAction ?: releasedAction else null
+            if (action != null && !action.enabled) {
                 resetGesture()
                 return
             }
-            val dismissedKind = menu.kind
-            val hit = renderer.menuHits.lastOrNull { it.rect.contains(x, y) }
-            val action = hit?.action?.takeIf { it.enabled }
             if (action != null && menu.expand(action)) {
                 resetGesture()
                 return
             }
+            if (action != null) {
+                menu.close { action.runAt?.invoke(x, y) ?: action.run() }
+                resetGesture()
+                return
+            }
+            // The menu is visually above its launchers. Only let an exposed launcher handle
+            // the touch when no menu row owns that point.
+            if (!moved && switchOpenMenuFromLauncher(x, y)) {
+                resetGesture()
+                return
+            }
+            if (menu.isOpening()) {
+                resetGesture()
+                return
+            }
             menu.close {
-                if (action != null) action.runAt?.invoke(x, y) ?: action.run()
-                else if (dismissedKind == MenuKind.FILE && !selection.multiSelect) selection.clear()
+                if (dismissedKind == MenuKind.FILE && !selection.multiSelect) selection.clear()
             }
             resetGesture()
             return
@@ -580,7 +601,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             else -> return false
         }
         if (menu.kind == requested) {
-            menu.close()
+            if (!menu.isOpening()) menu.close()
         } else {
             when (requested) {
                 MenuKind.APP -> menus.showApp(topBarTop, topBarBottom, contentLeft)
@@ -594,7 +615,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
 
     private fun resetGesture() {
         handler.removeCallbacks(longPressRunnable)
-        downFile = null; downTab = -1; downCloseTab = null
+        downFile = null; downTab = -1; downCloseTab = null; downMenuAction = null
         moved = false; scrolling = false; dockScrolling = false
         longTriggered = false; dragging = false; tabDragging = false
         draggedTab = null; dragCancelHover = false

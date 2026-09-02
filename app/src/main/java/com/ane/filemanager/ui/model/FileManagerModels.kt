@@ -5,7 +5,9 @@ import java.io.File
 import com.ane.filemanager.navigation.BrowserTab
 
 internal data class MotionSnapshot(
-    val menuProgress: Float = 1f
+    val menuProgress: Float = 1f,
+    val menuLayerProgress: Float = 1f,
+    val animatedMenuLayer: Int = -1
 )
 
 internal data class TabMotionStart(

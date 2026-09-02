@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -168,7 +169,7 @@ internal class FileManagerRenderer(
         drawTabs(canvas)
         if (state.dragging) drawDragPreview(canvas)
         drawFab(canvas)
-        if (state.menuKind != MenuKind.NONE) drawMenu(canvas)
+        if (state.menuKind != MenuKind.NONE) drawMenu(canvas) else menuHits.clear()
         state.busyText?.let { drawBusy(canvas, it) }
     }
 
@@ -1093,12 +1094,28 @@ internal class FileManagerRenderer(
         canvas.scale(scale, scale, state.menuOriginX, state.menuOriginY)
         menuHits.clear()
         panels.forEachIndexed { layerIndex, panel ->
+            val layerProgress = if (layerIndex == state.motion.animatedMenuLayer) {
+                state.motion.menuLayerProgress.coerceIn(0f, 1f)
+            } else {
+                1f
+            }
+            val combinedProgress = progress * layerProgress
+            canvas.save()
+            if (layerIndex > 0 && layerProgress < 1f) {
+                val slideDistance = dp(20f) * (1f - layerProgress)
+                canvas.translate(-panel.direction * slideDistance, 0f)
+                val layerScale = .96f + .04f * layerProgress
+                val pivotX = if (panel.direction < 0) panel.rect.right else panel.rect.left
+                canvas.scale(layerScale, layerScale, pivotX, panel.rect.centerY())
+            }
+            val hitTransform = Matrix()
+            canvas.getMatrix(hitTransform)
             paint.color = Color.BLACK
-            paint.alpha = (48 * progress).toInt()
+            paint.alpha = (48 * combinedProgress).toInt()
             val shadowPanel = RectF(panel.rect).apply { offset(0f, dp(4f)) }
             canvas.drawRoundRect(shadowPanel, dp(16f), dp(16f), paint)
             paint.color = color("surface")
-            paint.alpha = (255 * progress).toInt()
+            paint.alpha = (255 * combinedProgress).toInt()
             canvas.drawRoundRect(panel.rect, dp(14f), dp(14f), paint)
 
             panel.actions.forEachIndexed { index, action ->
@@ -1108,11 +1125,18 @@ internal class FileManagerRenderer(
                     panel.rect.right - dp(5f),
                     panel.rect.top + dp(7f) + (index + 1) * panel.itemHeight
                 )
-                menuHits += MenuHit(action, rect)
+                val hitRect = RectF(rect)
+                hitTransform.mapRect(hitRect)
+                menuHits += MenuHit(action, hitRect)
                 val childPanel = panels.getOrNull(layerIndex + 1)?.takeIf { it.parent === action }
                 if (childPanel != null) {
-                    paint.color = fadeColor(color("surface2"), progress)
-                    paint.alpha = (255 * progress).toInt()
+                    val highlightProgress = if (layerIndex + 1 == state.motion.animatedMenuLayer) {
+                        combinedProgress * state.motion.menuLayerProgress.coerceIn(0f, 1f)
+                    } else {
+                        combinedProgress
+                    }
+                    paint.color = fadeColor(color("surface2"), highlightProgress)
+                    paint.alpha = (255 * highlightProgress).toInt()
                     canvas.drawRoundRect(rect, dp(9f), dp(9f), paint)
                 }
                 val direction = if (action.children.isEmpty()) 0 else childPanel?.direction
@@ -1131,15 +1155,19 @@ internal class FileManagerRenderer(
                     RectF(textLeft, rect.top, textRight, rect.bottom),
                     rect.centerY(),
                     15f,
-                    fadeColor(if (action.enabled) color("text") else color("muted"), progress),
+                    fadeColor(
+                        if (action.enabled) color("text") else color("muted"),
+                        combinedProgress
+                    ),
                     Paint.Align.LEFT,
                     false,
                     false
                 )
                 if (direction != 0) {
-                    drawMenuChevron(canvas, rect, direction, action.enabled, progress)
+                    drawMenuChevron(canvas, rect, direction, action.enabled, combinedProgress)
                 }
             }
+            canvas.restore()
         }
         canvas.restore()
         paint.alpha = 255
