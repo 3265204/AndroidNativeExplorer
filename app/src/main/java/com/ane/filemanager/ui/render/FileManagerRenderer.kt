@@ -984,15 +984,15 @@ internal class FileManagerRenderer(
             return
         }
         val horizontalMargin = dp(8f)
-        val menuWidth = min(dp(216f),
-            (contentRight - contentLeft - horizontalMargin * 2f).coerceAtLeast(0f))
         val verticalMargin = dp(8f)
         val panelPadding = dp(14f)
         val panelGap = dp(6f)
+        val availableMenuWidth =
+            (contentRight - contentLeft - horizontalMargin * 2f).coerceAtLeast(0f)
         val availableMenuHeight = (height - state.insets.top - state.insets.bottom - verticalMargin * 2f)
             .coerceAtLeast(0f)
         val minLeft = contentLeft + horizontalMargin
-        val maxLeft = (contentRight - menuWidth - horizontalMargin).coerceAtLeast(minLeft)
+        val maxRight = contentRight - horizontalMargin
         val minTop = state.insets.top + verticalMargin
         val maxBottom = height - state.insets.bottom - verticalMargin
 
@@ -1012,42 +1012,68 @@ internal class FileManagerRenderer(
         fun panelHeight(actions: List<MenuAction>, rowHeight: Float) =
             rowHeight * actions.size + panelPadding
 
+        fun desiredPanelWidth(actions: List<MenuAction>): Float {
+            configureText(15f, color("text"), false)
+            val labelWidth = actions.maxOfOrNull { paint.measureText(it.label) } ?: 0f
+            val arrowAllowance = if (actions.any { it.children.isNotEmpty() }) dp(22f) else 0f
+            return (labelWidth + dp(46f) + arrowAllowance)
+                .coerceIn(dp(132f).coerceAtMost(availableMenuWidth), dp(216f))
+                .coerceAtMost(availableMenuWidth)
+        }
+
+        val desiredWidths = layers.map(::desiredPanelWidth)
+        val panelWidths = MenuPanelWidthPolicy.fit(
+            desiredWidths = desiredWidths,
+            availableWidth = availableMenuWidth,
+            gap = panelGap,
+            minimumWidth = dp(112f)
+        )
+
         val panels = mutableListOf<Panel>()
         val rootActions = layers.first()
+        val rootWidth = panelWidths.first()
         val rootRowHeight = itemHeight(rootActions)
         val rootHeight = panelHeight(rootActions, rootRowHeight)
-        val rootLeft = state.menuX.coerceIn(minLeft, maxLeft)
+        val rootMaxLeft = (maxRight - rootWidth).coerceAtLeast(minLeft)
+        val rootLeft = if (state.menuKind == MenuKind.FAB) {
+            val anchoredRight = (state.menuX + dp(216f)).coerceIn(minLeft + rootWidth, maxRight)
+            anchoredRight - rootWidth
+        } else {
+            state.menuX.coerceIn(minLeft, rootMaxLeft)
+        }
         val rootTop = state.menuY.coerceIn(minTop, (maxBottom - rootHeight).coerceAtLeast(minTop))
         panels += Panel(
             actions = rootActions,
-            rect = RectF(rootLeft, rootTop, rootLeft + menuWidth, rootTop + rootHeight),
+            rect = RectF(rootLeft, rootTop, rootLeft + rootWidth, rootTop + rootHeight),
             itemHeight = rootRowHeight,
             parent = null,
             direction = 0
         )
 
-        layers.drop(1).forEach { actions ->
+        layers.drop(1).forEachIndexed { childIndex, actions ->
             val previous = panels.last()
+            val childWidth = panelWidths[childIndex + 1]
             val parentIndex = previous.actions.indexOfFirst { it.children === actions }
                 .takeIf { it >= 0 }
                 ?: previous.actions.indexOfFirst { it.children == actions }.coerceAtLeast(0)
             val parent = previous.actions.getOrNull(parentIndex)
             val rowHeight = itemHeight(actions)
             val childHeight = panelHeight(actions, rowHeight)
-            val fitsLeft = previous.rect.left - panelGap - menuWidth >= minLeft
-            val fitsRight = previous.rect.right + panelGap + menuWidth <= contentRight - horizontalMargin
+            val fitsLeft = previous.rect.left - panelGap - childWidth >= minLeft
+            val fitsRight = previous.rect.right + panelGap + childWidth <= maxRight
             val direction = when {
                 fitsLeft -> -1
                 fitsRight -> 1
-                previous.rect.left - minLeft >= contentRight - horizontalMargin - previous.rect.right -> -1
+                previous.rect.left - minLeft >= maxRight - previous.rect.right -> -1
                 else -> 1
             }
             val requestedLeft = if (direction < 0) {
-                previous.rect.left - panelGap - menuWidth
+                previous.rect.left - panelGap - childWidth
             } else {
                 previous.rect.right + panelGap
             }
-            val left = requestedLeft.coerceIn(minLeft, maxLeft)
+            val childMaxLeft = (maxRight - childWidth).coerceAtLeast(minLeft)
+            val left = requestedLeft.coerceIn(minLeft, childMaxLeft)
             val parentRowTop = previous.rect.top + dp(7f) + parentIndex * previous.itemHeight
             val top = (parentRowTop - dp(7f)).coerceIn(
                 minTop,
@@ -1055,7 +1081,7 @@ internal class FileManagerRenderer(
             )
             panels += Panel(
                 actions = actions,
-                rect = RectF(left, top, left + menuWidth, top + childHeight),
+                rect = RectF(left, top, left + childWidth, top + childHeight),
                 itemHeight = rowHeight,
                 parent = parent,
                 direction = direction
@@ -1090,7 +1116,12 @@ internal class FileManagerRenderer(
                     canvas.drawRoundRect(rect, dp(9f), dp(9f), paint)
                 }
                 val direction = if (action.children.isEmpty()) 0 else childPanel?.direction
-                    ?: preferredSubmenuDirection(panel.rect, menuWidth, panelGap, horizontalMargin)
+                    ?: preferredSubmenuDirection(
+                        panel.rect,
+                        desiredPanelWidth(action.children),
+                        panelGap,
+                        horizontalMargin
+                    )
                 val textLeft = rect.left + dp(if (direction < 0) 31f else 17f)
                 val textRight = rect.right - dp(if (direction > 0) 31f else 12f)
                 overflowText(
