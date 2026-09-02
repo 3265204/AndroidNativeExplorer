@@ -19,6 +19,7 @@ internal fun Context.fileProblemMessage(problem: FileProblem): String {
         FileFailure.COPY_FAILED -> getString(R.string.error_copy_failed, subject)
         FileFailure.MOVE_FAILED -> getString(R.string.error_move_failed, subject)
         FileFailure.PARTIAL_MOVE -> getString(R.string.error_partial_move, subject)
+        FileFailure.HISTORY_NODE_MISSING -> getString(R.string.error_unknown)
         FileFailure.UNKNOWN -> getString(R.string.error_unknown)
     }
 }

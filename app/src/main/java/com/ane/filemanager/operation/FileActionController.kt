@@ -8,7 +8,7 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Coordinates user-facing file transactions and the session-wide undo history.
+ * Coordinates user-facing file transactions and the session-wide branching history.
  * Rendering, selection gestures and Dock navigation stay outside this class.
  */
 internal class FileActionController(
@@ -26,14 +26,15 @@ internal class FileActionController(
         Thread(task, FILE_OPERATION_THREAD_NAME)
     }
     private val closed = AtomicBoolean(false)
-    private val undo = FileUndoController()
+    private val history = FileHistoryController()
     private val trashDirectory = File(rootDirectory, ".ane-filemanager-trash")
     private var clipboard = listOf<File>()
 
     private var clipboardCut: Boolean = false
 
     val hasClipboard get() = clipboard.isNotEmpty()
-    val canUndo get() = undo.canUndo
+    val canUndo get() = history.canUndo
+    val canRedo get() = history.canRedo
 
     init {
         execute { files.cleanupTrash(trashDirectory) }
@@ -70,7 +71,10 @@ internal class FileActionController(
             when (val result = files.create(currentDirectory(), name, folder)) {
                 is FileResult.Success -> {
                     val created = result.value
-                    recordUndo(PendingUndo(run = { files.delete(listOf(created)) }))
+                    recordUndo(createdOutputAction(
+                        created,
+                        s(if (folder) R.string.action_new_folder else R.string.action_new_file)
+                    ))
                     refresh()
                     replaceSelection(created)
                 }
@@ -100,9 +104,7 @@ internal class FileActionController(
         host.confirm(s(R.string.dialog_delete_title, targets.size), s(R.string.dialog_delete_message)) {
             performJob(s(R.string.status_deleting), { files.deleteToTrash(targets, trashDirectory) }) { records ->
                 if (records.isNotEmpty()) {
-                    recordUndo(PendingUndo(
-                        run = { files.restoreTrash(records) }
-                    ))
+                    recordUndo(deletedFilesAction(records))
                 }
                 exitMultiSelect()
             }
@@ -117,13 +119,19 @@ internal class FileActionController(
     }
 
     fun registerCreatedOutput(output: File) {
-        recordUndo(PendingUndo(run = { files.delete(listOf(output)) }))
+        recordUndo(createdOutputAction(output, output.name))
     }
 
     fun undoLastOperation() {
-        val action = undo.current() ?: return
-        performJob(s(R.string.status_undoing), action.run) {
-            undo.consume(action)
+        if (!history.canUndo) return
+        performJob(s(R.string.status_undoing), history::undo) {
+            exitMultiSelect()
+        }
+    }
+
+    fun redoLastOperation() {
+        if (!history.canRedo) return
+        performJob(s(R.string.status_redoing), { history.redo() }) {
             exitMultiSelect()
         }
     }
@@ -263,7 +271,13 @@ internal class FileActionController(
     }
 
     private fun recordTransferUndo(records: List<TransferRecord>, moved: Boolean) {
-        if (records.isNotEmpty()) recordUndo(PendingUndo(run = { files.undoTransfer(records, moved) }))
+        if (records.isNotEmpty()) {
+            recordUndo(FileHistoryAction(
+                label = s(if (moved) R.string.action_cut else R.string.action_copy),
+                undo = { files.undoTransfer(records, moved) },
+                redo = { files.redoTransfer(records, moved) }
+            ))
+        }
     }
 
     private fun rename(file: File, name: String, policy: RenameConflictPolicy) {
@@ -285,13 +299,71 @@ internal class FileActionController(
 
     private fun applyRename(record: RenameRecord) {
         if (record.original != record.result) {
-            recordUndo(PendingUndo(run = { files.undoRename(record) }))
+            var currentRecord = record
+            recordUndo(FileHistoryAction(
+                label = s(R.string.action_rename),
+                undo = { files.undoRename(currentRecord) },
+                redo = {
+                    val policy = if (currentRecord.replaced.isEmpty()) {
+                        RenameConflictPolicy.FAIL
+                    } else {
+                        RenameConflictPolicy.REPLACE
+                    }
+                    files.rename(
+                        currentRecord.original,
+                        currentRecord.result.name,
+                        policy,
+                        trashDirectory
+                    ).map { repeated -> currentRecord = repeated }
+                }
+            ))
         }
         replaceSelection(record.result)
     }
 
-    private fun recordUndo(action: PendingUndo) {
-        undo.push(action)
+    private fun createdOutputAction(output: File, label: String): FileHistoryAction {
+        var trashRecords = emptyList<TrashRecord>()
+        return FileHistoryAction(
+            label = label,
+            undo = {
+                deleteRecordedToTrash(listOf(output)).map { records ->
+                    trashRecords = records
+                }
+            },
+            redo = { files.restoreTrash(trashRecords) }
+        )
+    }
+
+    private fun deletedFilesAction(initialRecords: List<TrashRecord>): FileHistoryAction {
+        var trashRecords = initialRecords
+        return FileHistoryAction(
+            label = s(R.string.action_delete),
+            undo = { files.restoreTrash(trashRecords) },
+            redo = {
+                deleteRecordedToTrash(trashRecords.map(TrashRecord::original)).map { records ->
+                    trashRecords = records
+                }
+            }
+        )
+    }
+
+    private fun recordUndo(action: FileHistoryAction) {
+        history.push(action)
+    }
+
+    private fun deleteRecordedToTrash(targets: List<File>): FileResult<List<TrashRecord>> {
+        targets.firstOrNull { !it.exists() }?.let { missing ->
+            return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, missing.name))
+        }
+        return files.deleteToTrash(targets, trashDirectory)
+    }
+
+    private inline fun <T> FileResult<T>.map(onSuccess: (T) -> Unit): FileResult<Unit> = when (this) {
+        is FileResult.Success -> {
+            onSuccess(value)
+            FileResult.Success(Unit)
+        }
+        is FileResult.Failure -> this
     }
 
     private fun showProblem(problem: FileProblem) = host.toast(host.fileProblemMessage(problem))

@@ -7,6 +7,7 @@ This directory describes the structure and development constraints of ANE — An
 - [architecture.md](architecture.md): module layout, data flow, state, and threading model.
 - [development.md](development.md): coding conventions, feature-change workflow, and key constraints.
 - [plugins.md](plugins.md): hot-plug protocol, plugin manifest, boundaries, security, and acceptance criteria.
+- [agent-plugin.md](agent-plugin.md): file Agent, transaction plans, and branching history design.
 - [testing.md](testing.md): build, ADB install, emulator, and physical-device regression testing.
 
 ## Recommended reading order

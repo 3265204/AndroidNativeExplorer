@@ -76,8 +76,16 @@ internal class FileMenuCoordinator(
         openFab(fabActions(), menuLeft, menuTop, originX, originY)
     }
 
-    private fun fabActions() = buildList {
-        val hasSelection = !selection.isEmpty
+    private fun fabActions(): List<MenuAction> {
+        val selectedFiles = selection.files()
+        return if (selection.multiSelect || selectedFiles.isNotEmpty()) {
+            selectionFabActions(selectedFiles)
+        } else {
+            directoryFabActions()
+        }
+    }
+
+    private fun selectionFabActions(selectedFiles: List<File>) = buildList {
         add(MenuAction(s(if (selection.multiSelect) {
             R.string.action_exit_multi_select
         } else {
@@ -85,30 +93,55 @@ internal class FileMenuCoordinator(
         })) {
             if (selection.multiSelect) selection.exitMultiSelect() else selection.enterMultiSelect()
         })
-        if (hasSelection) {
+        if (selectedFiles.isNotEmpty()) {
             add(MenuAction(s(R.string.action_copy_selected)) { fileActions.copySelection(false) })
             add(MenuAction(s(R.string.action_cut_selected)) { fileActions.copySelection(true) })
-            plugins.selectionActions(selection.files()).forEach { action ->
-                add(MenuAction(action.label, run = action.run))
+            if (selectedFiles.all(File::isFile)) {
+                add(MenuAction(s(R.string.action_share)) { host.shareFiles(selectedFiles) })
             }
+            val tools = plugins.selectionActions(selectedFiles).map { action ->
+                MenuAction(action.label, run = action.run)
+            }
+            if (tools.isNotEmpty()) {
+                add(MenuAction(
+                    label = s(R.string.action_tools),
+                    children = tools
+                ))
+            }
+            add(MenuAction(s(R.string.action_delete_selected)) { fileActions.delete() })
         }
-        plugins.directoryActions(dock.currentDirectory).forEach { action ->
-            add(MenuAction(action.label, run = action.run))
-        }
+    }
+
+    private fun directoryFabActions() = buildList {
+        add(MenuAction(s(R.string.action_enter_multi_select)) { selection.enterMultiSelect() })
         if (fileActions.hasClipboard) {
             add(MenuAction(s(R.string.action_paste_here)) { fileActions.paste() })
         }
-        if (hasSelection) {
-            add(MenuAction(s(R.string.action_delete_selected)) { fileActions.delete() })
+        if (fileActions.canUndo) {
+            add(MenuAction(s(R.string.action_undo), run = fileActions::undoLastOperation))
+        }
+        if (fileActions.canRedo) {
+            add(MenuAction(s(R.string.action_redo), run = fileActions::redoLastOperation))
         }
         add(MenuAction(
-            label = s(R.string.action_undo),
-            enabled = fileActions.canUndo,
-            run = fileActions::undoLastOperation
+            label = s(R.string.action_create),
+            children = createActions()
         ))
-        add(MenuAction(s(R.string.action_new_file)) { fileActions.create(false) })
-        add(MenuAction(s(R.string.action_new_folder)) { fileActions.create(true) })
+        val tools = plugins.directoryActions(dock.currentDirectory).map { action ->
+            MenuAction(action.label, run = action.run)
+        }
+        if (tools.isNotEmpty()) {
+            add(MenuAction(
+                label = s(R.string.action_tools),
+                children = tools
+            ))
+        }
     }
+
+    private fun createActions() = listOf(
+        MenuAction(s(R.string.action_new_file)) { fileActions.create(false) },
+        MenuAction(s(R.string.action_new_folder)) { fileActions.create(true) }
+    )
 
     private fun openFab(
         actions: List<MenuAction>,

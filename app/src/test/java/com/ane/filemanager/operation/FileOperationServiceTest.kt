@@ -161,4 +161,52 @@ class FileOperationServiceTest {
         assertEquals("complete", source.readText())
         assertFalse(target.exists())
     }
+
+    @Test
+    fun `copy can be undone and redone at its recorded destination`() {
+        val sourceDirectory = temporary.newFolder("redo-copy-source")
+        val targetDirectory = temporary.newFolder("redo-copy-target")
+        val source = File(sourceDirectory, "item.txt").apply { writeText("content") }
+        val copied = service.transfer(listOf(source), targetDirectory, move = false)
+            as FileResult.Success
+        val records = copied.value.records
+
+        assertTrue(service.undoTransfer(records, moved = false) is FileResult.Success)
+        assertFalse(records.single().result.exists())
+
+        assertTrue(service.redoTransfer(records, moved = false) is FileResult.Success)
+        assertEquals("content", records.single().result.readText())
+    }
+
+    @Test
+    fun `redo transfer refuses to overwrite a branch conflict`() {
+        val sourceDirectory = temporary.newFolder("redo-conflict-source")
+        val targetDirectory = temporary.newFolder("redo-conflict-target")
+        val source = File(sourceDirectory, "item.txt").apply { writeText("source") }
+        val target = File(targetDirectory, "item.txt").apply { writeText("conflict") }
+        val record = TransferRecord(source, target)
+
+        val result = service.redoTransfer(listOf(record), moved = false)
+
+        assertTrue(result is FileResult.Failure)
+        assertEquals(FileFailure.NAME_EXISTS, (result as FileResult.Failure).problem.failure)
+        assertEquals("conflict", target.readText())
+    }
+
+    @Test
+    fun `undo transfer validates the whole batch before changing files`() {
+        val sourceDirectory = temporary.newFolder("undo-validation-source")
+        val targetDirectory = temporary.newFolder("undo-validation-target")
+        val first = File(sourceDirectory, "first.txt").apply { writeText("first") }
+        val second = File(sourceDirectory, "second.txt").apply { writeText("second") }
+        val copied = service.transfer(listOf(first, second), targetDirectory, move = false)
+            as FileResult.Success
+        val records = copied.value.records
+        records.first().result.delete()
+
+        val result = service.undoTransfer(records, moved = false)
+
+        assertTrue(result is FileResult.Failure)
+        assertTrue(records.last().result.exists())
+    }
 }

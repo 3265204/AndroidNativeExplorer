@@ -7,6 +7,7 @@
 - [architecture.md](architecture.md)：模块划分、数据流、状态和线程模型。
 - [development.md](development.md)：编码规范、功能修改流程和关键约束。
 - [plugins.md](plugins.md)：热插拔协议、插件 manifest、边界、安全与验收规范。
+- [agent-plugin.md](agent-plugin.md)：文件 Agent、事务计划与树形历史设计。
 - [testing.md](testing.md)：编译、ADB 安装、模拟器和真机回归测试。
 
 ## 推荐阅读顺序

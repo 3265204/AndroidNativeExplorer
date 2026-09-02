@@ -55,7 +55,7 @@ val path = intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH)
 
 The entry matching and the Activity's same-directory filter must reference the same plugin format config; do not maintain two extension sets. Plugins needing selection, icons, directory actions or a custom open flow continue to implement the corresponding interfaces directly.
 
-To contribute actions based on the current selection to the plus menu, a plugin may additionally implement `PluginSelectionActionProvider`. The host only passes the single- or multi-selected files to enabled plugins and does not recognize concrete business types:
+To contribute actions based on the current selection, a plugin may additionally implement `PluginSelectionActionProvider`. Whenever the selection is non-empty, actions returned by enabled plugins are automatically grouped under the selection-state plus menu's “Tools” tree node. The host only passes the single- or multi-selected files and does not recognize concrete business types:
 
 ```kotlin
 class ArchivePlugin : AnePlugin, PluginSelectionActionProvider {
@@ -70,7 +70,7 @@ class ArchivePlugin : AnePlugin, PluginSelectionActionProvider {
 }
 ```
 
-Plus-menu actions that act on the current browsing directory rather than the selection should implement `PluginDirectoryActionProvider`. The host passes the current directory regardless of whether there is a selection; such actions do not appear in the long-press menu of files or folders:
+Actions that operate on the current browsing directory rather than the selection should implement `PluginDirectoryActionProvider`. In the normal state, the host automatically groups all directory actions returned by enabled plugins under the plus menu's “Tools…” submenu. Selection state shows selection actions only, so directory actions are not mixed with batch operations and do not appear in file or folder long-press menus:
 
 ```kotlin
 class TerminalPlugin : AnePlugin, PluginDirectoryActionProvider {
@@ -80,7 +80,7 @@ class TerminalPlugin : AnePlugin, PluginDirectoryActionProvider {
 }
 ```
 
-Both selection actions and directory actions must be returned dynamically by the plugin; after disabling or uninstalling the plugin they disappear automatically from the plus menu. The host must not hardcode plugin IDs, archive formats or button copy.
+Plugin actions are routed by scope automatically: `fileActions` go to the file long-press menu, `selectionActions` go under the selection-state “Tools” tree node, and `directoryActions` go under the normal-state “Tools” tree node. All three must be returned dynamically; disabling or uninstalling the plugin removes them automatically. The host must not hardcode plugin IDs, archive formats or button copy. Adding another plugin of these types does not require changing `FileMenuCoordinator`.
 
 For a dedicated file icon, a plugin may additionally implement `PluginFileIconProvider`. The file type is still recognized by the plugin, e.g. an archive plugin returns `PluginFileIcon.ARCHIVE`; the host only draws the corresponding semantic icon and does not maintain an archive-extension list. Files not handled by any plugin are routed to Android's external apps uniformly. ANE first shows "Just once / Always": the former only applies to the current open operation, and the latter remembers the chosen app by MIME type (extension for unknown MIME). "Open with" in the file long-press menu shows the same modes again and allows overriding the existing association.
 

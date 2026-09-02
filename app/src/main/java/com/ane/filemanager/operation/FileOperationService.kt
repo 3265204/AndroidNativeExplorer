@@ -16,6 +16,7 @@ internal enum class FileFailure {
     COPY_FAILED,
     MOVE_FAILED,
     PARTIAL_MOVE,
+    HISTORY_NODE_MISSING,
     UNKNOWN
 }
 
@@ -234,30 +235,90 @@ internal class FileOperationService {
     }
 
     fun undoTransfer(records: List<TransferRecord>, moved: Boolean): FileResult<Unit> {
-        records.asReversed().forEach { record ->
+        records.forEach { record ->
             if (!record.result.exists()) {
                 return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, record.result.name))
             }
             if (moved && record.original.exists() && !record.replaceOriginalOnUndo) {
                 return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, record.original.name))
             }
+        }
+
+        val completed = mutableListOf<TransferRecord>()
+        records.asReversed().forEach { record ->
             try {
                 if (moved) {
                     if (record.replaceOriginalOnUndo && record.original.exists() && !FileOps.delete(record.original)) {
+                        rollbackUndoneTransfer(completed, moved)
                         return FileResult.Failure(FileProblem(FileFailure.DELETE_FAILED, record.original.name))
                     }
                     FileOps.move(record.result, record.original)
                 }
                 else if (!FileOps.delete(record.result)) {
+                    rollbackUndoneTransfer(completed, moved)
                     return FileResult.Failure(FileProblem(FileFailure.DELETE_FAILED, record.result.name))
                 }
+                completed += record
             } catch (error: FileOperationException) {
+                rollbackUndoneTransfer(completed, moved)
                 return FileResult.Failure(FileProblem(error.failure, error.subject ?: record.result.name))
             } catch (_: Exception) {
+                rollbackUndoneTransfer(completed, moved)
                 return FileResult.Failure(FileProblem(FileFailure.MOVE_FAILED, record.result.name))
             }
         }
         return FileResult.Success(Unit)
+    }
+
+    private fun rollbackUndoneTransfer(records: List<TransferRecord>, moved: Boolean) {
+        redoTransfer(records.asReversed(), moved)
+    }
+
+    /** Reapplies an already-recorded transfer to its exact destinations. */
+    fun redoTransfer(records: List<TransferRecord>, moved: Boolean): FileResult<Unit> {
+        val completed = mutableListOf<TransferRecord>()
+        records.forEach { record ->
+            if (!record.original.exists()) {
+                rollbackRedoneTransfer(completed, moved)
+                return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, record.original.name))
+            }
+            if (record.result.exists()) {
+                rollbackRedoneTransfer(completed, moved)
+                return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, record.result.name))
+            }
+            try {
+                if (moved) FileOps.move(record.original, record.result)
+                else FileOps.copy(record.original, record.result)
+                completed += record
+            } catch (error: FileOperationException) {
+                if (record.result.exists() && record.original.exists()) FileOps.delete(record.result)
+                rollbackRedoneTransfer(completed, moved)
+                return FileResult.Failure(
+                    FileProblem(error.failure, error.subject ?: record.original.name)
+                )
+            } catch (_: Exception) {
+                if (record.result.exists() && record.original.exists()) FileOps.delete(record.result)
+                rollbackRedoneTransfer(completed, moved)
+                return FileResult.Failure(
+                    FileProblem(if (moved) FileFailure.MOVE_FAILED else FileFailure.COPY_FAILED, record.original.name)
+                )
+            }
+        }
+        return FileResult.Success(Unit)
+    }
+
+    private fun rollbackRedoneTransfer(records: List<TransferRecord>, moved: Boolean) {
+        records.asReversed().forEach { record ->
+            try {
+                if (moved && record.result.exists() && !record.original.exists()) {
+                    FileOps.move(record.result, record.original)
+                } else if (!moved && record.result.exists()) {
+                    FileOps.delete(record.result)
+                }
+            } catch (_: Exception) {
+                // Preserve the original redo failure; this is a best-effort transaction rollback.
+            }
+        }
     }
 
     fun restorePath(current: File, original: File): FileResult<Unit> {
@@ -318,17 +379,33 @@ internal class FileOperationService {
                 return FileResult.Failure(FileProblem(FileFailure.NAME_EXISTS, record.original.name))
             }
         }
+        val completed = mutableListOf<TrashRecord>()
         records.forEach { record ->
             try {
                 FileOps.move(record.trashed, record.original)
+                completed += record
             } catch (error: FileOperationException) {
+                rollbackRestoredTrash(completed)
                 return FileResult.Failure(FileProblem(error.failure, error.subject ?: record.original.name))
             } catch (_: Exception) {
+                rollbackRestoredTrash(completed)
                 return FileResult.Failure(FileProblem(FileFailure.MOVE_FAILED, record.original.name))
             }
         }
         removeTrashBatch(records)
         return FileResult.Success(Unit)
+    }
+
+    private fun rollbackRestoredTrash(records: List<TrashRecord>) {
+        records.asReversed().forEach { record ->
+            try {
+                if (record.original.exists() && !record.trashed.exists()) {
+                    FileOps.move(record.original, record.trashed)
+                }
+            } catch (_: Exception) {
+                // Preserve the original restore failure; this is a best-effort rollback.
+            }
+        }
     }
 
     fun cleanupTrash(trashRoot: File) {

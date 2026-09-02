@@ -7,6 +7,7 @@ internal enum class DesktopAction {
     CUT,
     PASTE,
     UNDO,
+    REDO,
     SELECT_ALL,
     EDIT_ADDRESS,
     CREATE_FOLDER,
@@ -43,7 +44,8 @@ internal object DesktopShortcutResolver {
                 KeyEvent.KEYCODE_C -> DesktopAction.COPY
                 KeyEvent.KEYCODE_X -> DesktopAction.CUT
                 KeyEvent.KEYCODE_V -> DesktopAction.PASTE
-                KeyEvent.KEYCODE_Z -> DesktopAction.UNDO
+                KeyEvent.KEYCODE_Z -> if (shift) DesktopAction.REDO else DesktopAction.UNDO
+                KeyEvent.KEYCODE_Y -> DesktopAction.REDO
                 KeyEvent.KEYCODE_A -> DesktopAction.SELECT_ALL
                 KeyEvent.KEYCODE_L -> DesktopAction.EDIT_ADDRESS
                 KeyEvent.KEYCODE_N -> if (shift) DesktopAction.CREATE_FOLDER else null

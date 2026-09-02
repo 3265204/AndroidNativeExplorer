@@ -7,7 +7,7 @@ import com.ane.filemanager.ui.motion.UiMotionController
 
 internal data class MenuRenderState(
     val kind: MenuKind,
-    val actions: List<MenuAction>,
+    val layers: List<List<MenuAction>>,
     val x: Float,
     val y: Float,
     val originX: Float,
@@ -21,7 +21,7 @@ internal class FileMenuController(private val invalidate: () -> Unit) {
 
     var kind: MenuKind = MenuKind.NONE
         private set
-    private var actions = listOf<MenuAction>()
+    private var layers = listOf<List<MenuAction>>()
     private var x = 0f
     private var y = 0f
     private var originX = 0f
@@ -36,7 +36,7 @@ internal class FileMenuController(private val invalidate: () -> Unit) {
         originY: Float
     ) {
         this.kind = kind
-        this.actions = actions
+        this.layers = listOf(actions)
         this.x = x
         this.y = y
         this.originX = originX
@@ -52,11 +52,20 @@ internal class FileMenuController(private val invalidate: () -> Unit) {
         }
         motion.closeMenu {
             kind = MenuKind.NONE
-            actions = emptyList()
+            layers = emptyList()
             invalidate()
             after()
         }
     }
 
-    fun renderState() = MenuRenderState(kind, actions, x, y, originX, originY, motion.snapshot())
+    fun expand(action: MenuAction): Boolean {
+        if (action.children.isEmpty()) return false
+        val parentLayer = layers.indexOfFirst { actions -> actions.any { it === action } }
+        if (parentLayer < 0) return false
+        layers = layers.take(parentLayer + 1) + listOf(action.children)
+        invalidate()
+        return true
+    }
+
+    fun renderState() = MenuRenderState(kind, layers, x, y, originX, originY, motion.snapshot())
 }

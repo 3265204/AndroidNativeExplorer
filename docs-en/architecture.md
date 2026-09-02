@@ -98,11 +98,13 @@ File operations are layered in three levels:
 
 1. `FileOps`: low-level copy, move, delete and path checks.
 2. `FileOperationService`: returns structured `FileResult`, converting exceptions to `FileProblem`.
-3. `FileActionController`: connects selection, dialogs, background threads, undo stack and UI prompts.
+3. `FileActionController`: connects selection, dialogs, background threads, branching operation history and UI prompts.
 
 Copy, move, delete and undo run serially on a named single-thread executor, avoiding multiple transactions concurrently modifying the same path or recycle directory. After the controller is closed, it no longer accepts new tasks; queued transactions complete safely but no longer call back a destroyed Activity.
 
-Deletion is not immediate destruction: the file is moved to `.ane-filemanager-trash` under the storage root. Undo records live in the current process session with no fixed step cap; restarting the app cleans old recycle contents, so undo is not a cross-process persistent feature.
+Deletion is not immediate destruction: the file is moved to `.ane-filemanager-trash` under the storage root. `FileHistoryController` stores bidirectional actions with parent/child relationships; recording after undo preserves the old branch, and history can redo the newest child or check out a node explicitly. Records remain process-session only, with no fixed step cap. Old trash is cleaned on restart, so history is not persisted across processes.
+
+See [agent-plugin.md](agent-plugin.md) for the file Agent boundary and planned host transaction API.
 
 ## Plugins
 

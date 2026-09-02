@@ -99,11 +99,13 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 
 1. `FileOps`：底层复制、移动、删除和路径判断。
 2. `FileOperationService`：返回结构化 `FileResult`，把异常转换为 `FileProblem`。
-3. `FileActionController`：连接选择、对话框、后台线程、撤回栈和 UI 提示。
+3. `FileActionController`：连接选择、对话框、后台线程、树形操作历史和 UI 提示。
 
 复制、移动、删除和撤回通过命名的单线程执行器串行执行，避免多个事务同时修改相同路径或回收目录。控制器关闭后不再接受新任务；已排队的事务安全完成，但不再回调失效 Activity。
 
-删除并非立即销毁：文件会移动到存储根目录下的 `.ane-filemanager-trash`。撤回记录保存在当前进程会话内，没有固定步数上限；重新启动应用时会清理旧回收内容，因此撤回不是跨进程持久化功能。
+删除并非立即销毁：文件会移动到存储根目录下的 `.ane-filemanager-trash`。`FileHistoryController` 保存带父子关系的双向动作；撤回后执行新操作会保留原分支，并可重做到最新子分支或按节点切换分支。记录仍只保存在当前进程会话内，没有固定步数上限；重新启动应用时会清理旧回收内容，因此历史不是跨进程持久化功能。
+
+文件 Agent 的能力边界和后续宿主事务 API 见 [agent-plugin.md](agent-plugin.md)。
 
 ## 插件
 

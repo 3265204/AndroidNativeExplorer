@@ -16,15 +16,16 @@ interface AnePlugin {
     fun onUnload() = Unit
     fun supports(file: PluginFile): Boolean
     fun open(file: PluginFile, host: PluginHost): Boolean = false
+    /** Actions automatically routed to the matched file's long-press menu. */
     fun fileActions(file: PluginFile, host: PluginHost): List<PluginFileAction> = emptyList()
 }
 
-/** Optional capability for actions that operate on the file manager's current selection. */
+/** Optional selected-file actions automatically grouped under Tools in the selection menu. */
 interface PluginSelectionActionProvider {
     fun selectionActions(files: List<PluginFile>, host: PluginHost): List<PluginFileAction>
 }
 
-/** Optional capability for actions shown in the plus menu and scoped to the current directory. */
+/** Optional current-directory actions automatically grouped under Tools in the plus menu. */
 interface PluginDirectoryActionProvider {
     fun directoryActions(directory: PluginFile, host: PluginHost): List<PluginFileAction>
 }

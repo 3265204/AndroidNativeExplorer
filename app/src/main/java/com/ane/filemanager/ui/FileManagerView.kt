@@ -321,7 +321,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             dragY = dragY,
             dragCount = selection.dragFiles(downFile).size,
             menuKind = menuState.kind,
-            menuActions = menuState.actions,
+            menuLayers = menuState.layers,
             menuX = menuState.x,
             menuY = menuState.y,
             menuOriginX = menuState.originX,
@@ -528,6 +528,10 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             val dismissedKind = menu.kind
             val hit = renderer.menuHits.lastOrNull { it.rect.contains(x, y) }
             val action = hit?.action?.takeIf { it.enabled }
+            if (action != null && menu.expand(action)) {
+                resetGesture()
+                return
+            }
             menu.close {
                 if (action != null) action.runAt?.invoke(x, y) ?: action.run()
                 else if (dismissedKind == MenuKind.FILE && !selection.multiSelect) selection.clear()
@@ -797,6 +801,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             DesktopAction.CUT -> if (!selection.isEmpty) fileActions.copySelection(true)
             DesktopAction.PASTE -> if (fileActions.hasClipboard) fileActions.paste()
             DesktopAction.UNDO -> if (fileActions.canUndo) fileActions.undoLastOperation()
+            DesktopAction.REDO -> if (fileActions.canRedo) fileActions.redoLastOperation()
             DesktopAction.SELECT_ALL -> selection.selectAll(items)
             DesktopAction.EDIT_ADDRESS -> editAddress()
             DesktopAction.CREATE_FOLDER -> fileActions.create(true)

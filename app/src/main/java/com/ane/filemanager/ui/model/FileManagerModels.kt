@@ -29,6 +29,7 @@ internal data class MenuAction(
     val label: String,
     val enabled: Boolean = true,
     val runAt: ((x: Float, y: Float) -> Unit)? = null,
+    val children: List<MenuAction> = emptyList(),
     val run: () -> Unit = {}
 )
 internal data class MenuHit(val action: MenuAction, val rect: RectF)
@@ -69,7 +70,7 @@ internal data class RenderState(
     val dragY: Float,
     val dragCount: Int,
     val menuKind: MenuKind,
-    val menuActions: List<MenuAction>,
+    val menuLayers: List<List<MenuAction>>,
     val menuX: Float,
     val menuY: Float,
     val menuOriginX: Float,

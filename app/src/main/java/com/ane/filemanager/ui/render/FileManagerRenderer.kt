@@ -14,6 +14,7 @@ import com.ane.filemanager.R
 import com.ane.filemanager.plugin.api.PluginFileIcon
 import com.ane.filemanager.ui.model.FileHit
 import com.ane.filemanager.ui.model.LayoutMode
+import com.ane.filemanager.ui.model.MenuAction
 import com.ane.filemanager.ui.model.MenuHit
 import com.ane.filemanager.ui.model.MenuKind
 import com.ane.filemanager.ui.model.RenderState
@@ -977,47 +978,178 @@ internal class FileManagerRenderer(
         val progress = state.motion.menuProgress.coerceIn(0f, 1f)
         paint.color = Color.argb((0x44 * progress).toInt(), 0, 0, 0)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        val layers = state.menuLayers
+        if (layers.isEmpty()) {
+            menuHits.clear()
+            return
+        }
         val horizontalMargin = dp(8f)
         val menuWidth = min(dp(216f),
             (contentRight - contentLeft - horizontalMargin * 2f).coerceAtLeast(0f))
         val verticalMargin = dp(8f)
         val panelPadding = dp(14f)
+        val panelGap = dp(6f)
         val availableMenuHeight = (height - state.insets.top - state.insets.bottom - verticalMargin * 2f)
             .coerceAtLeast(0f)
-        val itemH = if (state.menuActions.isEmpty()) 0f else min(dp(48f),
-            ((availableMenuHeight - panelPadding) / state.menuActions.size).coerceAtLeast(0f))
-        val menuHeight = itemH * state.menuActions.size + panelPadding
         val minLeft = contentLeft + horizontalMargin
         val maxLeft = (contentRight - menuWidth - horizontalMargin).coerceAtLeast(minLeft)
-        val left = state.menuX.coerceIn(minLeft, maxLeft)
         val minTop = state.insets.top + verticalMargin
-        val maxTop = (height - state.insets.bottom - menuHeight - verticalMargin).coerceAtLeast(minTop)
-        val top = state.menuY.coerceIn(minTop, maxTop)
-        val panel = RectF(left, top, left + menuWidth, top + menuHeight)
+        val maxBottom = height - state.insets.bottom - verticalMargin
+
+        data class Panel(
+            val actions: List<MenuAction>,
+            val rect: RectF,
+            val itemHeight: Float,
+            val parent: MenuAction?,
+            val direction: Int
+        )
+
+        fun itemHeight(actions: List<MenuAction>): Float = if (actions.isEmpty()) 0f else min(
+            dp(48f),
+            ((availableMenuHeight - panelPadding) / actions.size).coerceAtLeast(0f)
+        )
+
+        fun panelHeight(actions: List<MenuAction>, rowHeight: Float) =
+            rowHeight * actions.size + panelPadding
+
+        val panels = mutableListOf<Panel>()
+        val rootActions = layers.first()
+        val rootRowHeight = itemHeight(rootActions)
+        val rootHeight = panelHeight(rootActions, rootRowHeight)
+        val rootLeft = state.menuX.coerceIn(minLeft, maxLeft)
+        val rootTop = state.menuY.coerceIn(minTop, (maxBottom - rootHeight).coerceAtLeast(minTop))
+        panels += Panel(
+            actions = rootActions,
+            rect = RectF(rootLeft, rootTop, rootLeft + menuWidth, rootTop + rootHeight),
+            itemHeight = rootRowHeight,
+            parent = null,
+            direction = 0
+        )
+
+        layers.drop(1).forEach { actions ->
+            val previous = panels.last()
+            val parentIndex = previous.actions.indexOfFirst { it.children === actions }
+                .takeIf { it >= 0 }
+                ?: previous.actions.indexOfFirst { it.children == actions }.coerceAtLeast(0)
+            val parent = previous.actions.getOrNull(parentIndex)
+            val rowHeight = itemHeight(actions)
+            val childHeight = panelHeight(actions, rowHeight)
+            val fitsLeft = previous.rect.left - panelGap - menuWidth >= minLeft
+            val fitsRight = previous.rect.right + panelGap + menuWidth <= contentRight - horizontalMargin
+            val direction = when {
+                fitsLeft -> -1
+                fitsRight -> 1
+                previous.rect.left - minLeft >= contentRight - horizontalMargin - previous.rect.right -> -1
+                else -> 1
+            }
+            val requestedLeft = if (direction < 0) {
+                previous.rect.left - panelGap - menuWidth
+            } else {
+                previous.rect.right + panelGap
+            }
+            val left = requestedLeft.coerceIn(minLeft, maxLeft)
+            val parentRowTop = previous.rect.top + dp(7f) + parentIndex * previous.itemHeight
+            val top = (parentRowTop - dp(7f)).coerceIn(
+                minTop,
+                (maxBottom - childHeight).coerceAtLeast(minTop)
+            )
+            panels += Panel(
+                actions = actions,
+                rect = RectF(left, top, left + menuWidth, top + childHeight),
+                itemHeight = rowHeight,
+                parent = parent,
+                direction = direction
+            )
+        }
+
         val scale = .84f + .16f * progress
         canvas.save()
         canvas.scale(scale, scale, state.menuOriginX, state.menuOriginY)
-        paint.color = Color.BLACK
-        paint.alpha = (48 * progress).toInt()
-        val shadowPanel = RectF(panel).apply { offset(0f, dp(4f)) }
-        canvas.drawRoundRect(shadowPanel, dp(16f), dp(16f), paint)
-        paint.color = color("surface")
-        paint.alpha = (255 * progress).toInt()
-        canvas.drawRoundRect(panel, dp(14f), dp(14f), paint)
         menuHits.clear()
-        state.menuActions.forEachIndexed { index, action ->
-            val rect = RectF(left + dp(5f), top + dp(7f) + index * itemH,
-                left + menuWidth - dp(5f), top + dp(7f) + (index + 1) * itemH)
-            menuHits += MenuHit(action, rect)
-            overflowText(canvas, "static:menu:$index", action.label,
-                RectF(rect.left + dp(17f), rect.top, rect.right - dp(12f), rect.bottom),
-                rect.centerY(), 15f, fadeColor(
-                    if (action.enabled) color("text") else color("muted"), progress
-                ),
-                Paint.Align.LEFT, false, false)
+        panels.forEachIndexed { layerIndex, panel ->
+            paint.color = Color.BLACK
+            paint.alpha = (48 * progress).toInt()
+            val shadowPanel = RectF(panel.rect).apply { offset(0f, dp(4f)) }
+            canvas.drawRoundRect(shadowPanel, dp(16f), dp(16f), paint)
+            paint.color = color("surface")
+            paint.alpha = (255 * progress).toInt()
+            canvas.drawRoundRect(panel.rect, dp(14f), dp(14f), paint)
+
+            panel.actions.forEachIndexed { index, action ->
+                val rect = RectF(
+                    panel.rect.left + dp(5f),
+                    panel.rect.top + dp(7f) + index * panel.itemHeight,
+                    panel.rect.right - dp(5f),
+                    panel.rect.top + dp(7f) + (index + 1) * panel.itemHeight
+                )
+                menuHits += MenuHit(action, rect)
+                val childPanel = panels.getOrNull(layerIndex + 1)?.takeIf { it.parent === action }
+                if (childPanel != null) {
+                    paint.color = fadeColor(color("surface2"), progress)
+                    paint.alpha = (255 * progress).toInt()
+                    canvas.drawRoundRect(rect, dp(9f), dp(9f), paint)
+                }
+                val direction = if (action.children.isEmpty()) 0 else childPanel?.direction
+                    ?: preferredSubmenuDirection(panel.rect, menuWidth, panelGap, horizontalMargin)
+                val textLeft = rect.left + dp(if (direction < 0) 31f else 17f)
+                val textRight = rect.right - dp(if (direction > 0) 31f else 12f)
+                overflowText(
+                    canvas,
+                    "static:menu:$layerIndex:$index",
+                    action.label,
+                    RectF(textLeft, rect.top, textRight, rect.bottom),
+                    rect.centerY(),
+                    15f,
+                    fadeColor(if (action.enabled) color("text") else color("muted"), progress),
+                    Paint.Align.LEFT,
+                    false,
+                    false
+                )
+                if (direction != 0) {
+                    drawMenuChevron(canvas, rect, direction, action.enabled, progress)
+                }
+            }
         }
         canvas.restore()
         paint.alpha = 255
+    }
+
+    private fun preferredSubmenuDirection(
+        panel: RectF,
+        menuWidth: Float,
+        panelGap: Float,
+        horizontalMargin: Float
+    ): Int {
+        val minLeft = contentLeft + horizontalMargin
+        val maxRight = contentRight - horizontalMargin
+        return when {
+            panel.left - panelGap - menuWidth >= minLeft -> -1
+            panel.right + panelGap + menuWidth <= maxRight -> 1
+            panel.left - minLeft >= maxRight - panel.right -> -1
+            else -> 1
+        }
+    }
+
+    private fun drawMenuChevron(
+        canvas: Canvas,
+        rect: RectF,
+        direction: Int,
+        enabled: Boolean,
+        progress: Float
+    ) {
+        val centerX = if (direction < 0) rect.left + dp(16f) else rect.right - dp(16f)
+        val centerY = rect.centerY()
+        val armX = dp(3.2f)
+        val armY = dp(4.6f)
+        stroke.color = fadeColor(if (enabled) color("text") else color("muted"), progress)
+        stroke.alpha = 255
+        stroke.strokeWidth = dp(1.6f)
+        stroke.strokeCap = Paint.Cap.ROUND
+        stroke.strokeJoin = Paint.Join.ROUND
+        val tipX = centerX + direction * armX
+        val tailX = centerX - direction * armX
+        canvas.drawLine(tailX, centerY - armY, tipX, centerY, stroke)
+        canvas.drawLine(tipX, centerY, tailX, centerY + armY, stroke)
     }
 
     private fun drawBusy(canvas: Canvas, message: String) {

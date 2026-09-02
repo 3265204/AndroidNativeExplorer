@@ -55,7 +55,7 @@ val path = intent.getStringExtra(AneIntentPluginEntry.EXTRA_FILE_PATH)
 
 入口匹配和 Activity 的同目录过滤必须引用同一个插件格式配置，禁止维护两份扩展名集合。需要 selection、图标、目录动作或自定义打开流程的插件继续直接实现相应接口。
 
-插件若要为加号菜单贡献基于当前选区的动作，可额外实现 `PluginSelectionActionProvider`。宿主只负责把单选或多选文件传给已启用插件，不识别具体业务类型：
+插件若要贡献基于当前选区的动作，可额外实现 `PluginSelectionActionProvider`。只要选区非空，宿主就会把已启用插件返回的动作自动收进多选状态加号菜单的“工具”树节点；宿主只传递单选或多选文件，不识别具体业务类型：
 
 ```kotlin
 class ArchivePlugin : AnePlugin, PluginSelectionActionProvider {
@@ -70,7 +70,7 @@ class ArchivePlugin : AnePlugin, PluginSelectionActionProvider {
 }
 ```
 
-不依赖选区、而是作用于当前浏览目录的加号菜单动作，应实现 `PluginDirectoryActionProvider`。宿主无论当前是否有选区都会传入当前目录；这类动作不会出现在文件或文件夹的长按菜单：
+不依赖选区、而是作用于当前浏览目录的动作，应实现 `PluginDirectoryActionProvider`。普通状态下，宿主会把所有已启用插件返回的目录动作自动收进加号菜单的“工具…”二级菜单；多选状态只显示选区动作，因此目录动作不会与批量操作混排，也不会出现在文件或文件夹的长按菜单：
 
 ```kotlin
 class TerminalPlugin : AnePlugin, PluginDirectoryActionProvider {
@@ -80,7 +80,7 @@ class TerminalPlugin : AnePlugin, PluginDirectoryActionProvider {
 }
 ```
 
-选区动作和当前目录动作都必须由插件动态返回；停用或卸载插件后会自动从加号菜单消失。宿主不得硬编码插件 ID、压缩格式或按钮文案。
+插件行为按作用域自动路由：`fileActions` 进入文件长按菜单，`selectionActions` 进入多选状态的“工具”树节点，`directoryActions` 进入普通状态的“工具”树节点。三类动作都必须由插件动态返回；停用或卸载插件后会自动消失。宿主不得硬编码插件 ID、压缩格式或按钮文案。新增这类插件不需要再次修改 `FileMenuCoordinator`。
 
 插件若需要专用文件图标，可额外实现 `PluginFileIconProvider`。文件类型仍由插件识别，例如压缩插件返回 `PluginFileIcon.ARCHIVE`；宿主只绘制对应的语义图标，不维护压缩扩展名列表。未被插件接管的文件统一交给 Android 外部应用路由。ANE 先统一显示“仅此一次 / 始终”：前者只用于当前打开操作，后者按 MIME 类型（未知 MIME 按扩展名）记住所选应用。文件长按菜单中的“选择打开方式”会再次显示相同模式，并允许覆盖原有关联。
 
