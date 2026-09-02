@@ -27,7 +27,9 @@ ane/
 │     └─ res/                仅文件管理器核心资源
 ├─ plugin-api/              插件运行协议与 UI、输入、文件能力契约（AAR，当前 v3）
 ├─ docs/
-├─ testphoto/               adb测试文件
+├─ temp/                    本地临时内容（仅跟踪目录结构）
+│  ├─ photo/               ADB 截图
+│  └─ docs/                思路与方案草稿
 ├─ README.md
 ├─ build.gradle
 ├─ settings.gradle
@@ -36,6 +38,6 @@ ane/
 
 - 根目录 `README.md` 项目介绍、编译和用户入门。
 - `docs/` 开发者文档。
-- `testphoto/` 验证截图、测试媒体和临时测试文件。
+- `temp/photo/` 存放 ADB 截图，`temp/docs/` 存放思路和方案草稿；Git 只跟踪这两个目录的 `.gitkeep`，不提交其中内容。
 - 构建产物只应出现在 Gradle 的 `build/` 目录中。
-- 注：如果您希望pr，您在本地环境下验证采用的testphoto和build文件夹内容请勿上传到pr。
+- 注：如果您希望提交 PR，请勿上传本地 `temp/` 与 `build/` 目录中的临时内容。

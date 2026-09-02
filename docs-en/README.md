@@ -28,7 +28,9 @@ ane/
 ├─ plugin-api/              plugin runtime protocol plus UI, input and file capability contracts (AAR, currently v3)
 ├─ docs/
 ├─ docs-en/                 English developer documentation
-├─ testphoto/               adb test files
+├─ temp/                    local temporary content (directory structure only)
+│  ├─ photo/               ADB screenshots
+│  └─ docs/                ideas and design drafts
 ├─ README.md
 ├─ README-en.md             English project README
 ├─ build.gradle
@@ -38,6 +40,6 @@ ane/
 
 - The root `README.md` is the project introduction, build instructions and user quick-start.
 - `docs/` is the Chinese developer documentation; `docs-en/` is the English developer documentation.
-- `testphoto/` holds verification screenshots, test media and temporary test files.
+- `temp/photo/` holds ADB screenshots and `temp/docs/` holds ideas and design drafts. Git tracks only each directory's `.gitkeep`, not their contents.
 - Build artifacts should only appear under Gradle's `build/` directory.
-- Note: if you open a PR, do not upload the contents of the `testphoto` and `build` folders verified locally.
+- When opening a PR, do not upload temporary local contents from `temp/` or `build/`.

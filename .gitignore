@@ -17,9 +17,14 @@ local.properties
 *.keystore
 keystore.properties
 
-# Local test artifacts
-/testphoto/*
-!/testphoto/.gitkeep
+# Local temporary artifacts
+/temp/*
+!/temp/docs/
+!/temp/photo/
+/temp/docs/*
+/temp/photo/*
+!/temp/docs/.gitkeep
+!/temp/photo/.gitkeep
 
 # OS files
 .DS_Store

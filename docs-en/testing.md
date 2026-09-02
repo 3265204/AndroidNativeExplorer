@@ -53,7 +53,7 @@ The MuMu ADB address depends on local configuration; the common current example 
 
 ## 3. Test data
 
-- All screenshots, test images, videos, audio, text and temporary files go in `testphoto/`.
+- Put ADB screenshots in `temp/photo/` and ideas or design drafts in `temp/docs/`. Do not commit the actual contents of these directories.
 - Do not place test media at the project root.
 - Delete, move and undo tests only use explicitly created test files; never experiment on the user's real files.
 - Screenshot names should describe the scenario, e.g. `fab-delete-selected.png`, `dock-reorder-cancel.png`.
