@@ -17,7 +17,10 @@ internal class FileActionController(
     private val replaceSelection: (File?) -> Unit,
     private val exitMultiSelect: () -> Unit,
     private val setBusy: (String?) -> Unit,
-    private val refresh: () -> Unit
+    private val refresh: () -> Unit,
+    private val onCopied: () -> Unit = {},
+    private val onMoveCompleted: (sources: List<File>, target: File) -> Unit = { _, _ -> },
+    private val onPasteCompleted: (target: File) -> Unit = {}
 ) {
     private val files get() = transactions.files
     private val closed = AtomicBoolean(false)
@@ -36,6 +39,7 @@ internal class FileActionController(
         clipboardCut = cut
         host.toast(s(R.string.clipboard_set, s(if (cut) R.string.verb_cut else R.string.verb_copy), clipboard.size))
         exitMultiSelect()
+        if (!cut && clipboard.isNotEmpty()) onCopied()
     }
 
     fun paste() {
@@ -46,13 +50,15 @@ internal class FileActionController(
             return
         }
         val moving = clipboardCut
+        val target = currentDirectory()
         performTransfer(
             s(if (moving) R.string.status_moving else R.string.status_copying),
             sources,
-            currentDirectory(),
+            target,
             moving
         ) { batch ->
             if (moving && batch.skipped == 0) clipboard = emptyList()
+            if (batch.skipped == 0) onPasteCompleted(target)
         }
     }
 
@@ -104,8 +110,9 @@ internal class FileActionController(
 
     fun move(sources: List<File>, target: File) {
         if (sources.isEmpty()) return
-        performTransfer(s(R.string.status_moving_count, sources.size), sources, target, moving = true) {
+        performTransfer(s(R.string.status_moving_count, sources.size), sources, target, moving = true) { batch ->
             exitMultiSelect()
+            if (batch.skipped == 0) onMoveCompleted(sources, target)
         }
     }
 

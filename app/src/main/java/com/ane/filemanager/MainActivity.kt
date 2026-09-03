@@ -28,6 +28,8 @@ import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.provider.LocalDocumentsProvider
 import com.ane.filemanager.sharing.ShareMimeTypes
 import com.ane.filemanager.ui.FileManagerView
+import com.ane.filemanager.ui.onboarding.OnboardingStore
+import com.ane.filemanager.ui.onboarding.OnboardingWorkspace
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import java.io.File
@@ -39,6 +41,7 @@ class MainActivity : Activity() {
     private var pickerButton: Button? = null
     private var fullscreenOverlay: View? = null
     private var fullscreenOverlayBack: (() -> Unit)? = null
+    private val onboardingStore by lazy { OnboardingStore(this) }
     private val fileInteractionsDelegate = lazy { FileInteractionService(this) }
     private val fileInteractions by fileInteractionsDelegate
 
@@ -53,6 +56,12 @@ class MainActivity : Activity() {
         }
         pickerRequest = PickerRequest.from(intent)
         val viewedDirectory = resolveViewedDirectory(intent)
+        val onboardingWorkspace = if (pickerRequest == null && !onboardingStore.isCompleted()) {
+            OnboardingWorkspace.prepare(this)
+        } else {
+            if (onboardingStore.isCompleted()) OnboardingWorkspace.clear(this)
+            null
+        }
         contentRoot = FrameLayout(this)
         fileView = FileManagerView(
             host = this,
@@ -60,12 +69,18 @@ class MainActivity : Activity() {
             pickerAllowsMultiple = pickerRequest?.allowsMultiple == true,
             fileFilter = { pickerRequest?.accepts(it) != false },
             onPickerFileOpened = pickerRequest?.let { { file -> handlePickerFileOpened(file) } },
-            onSelectionChanged = ::updatePickerButton
+            onSelectionChanged = ::updatePickerButton,
+            onboardingWorkspace = onboardingWorkspace,
+            onOnboardingCompleted = {
+                onboardingStore.markCompleted()
+                toast(getString(R.string.tutorial_complete_toast))
+                recreate()
+            }
         )
         contentRoot.addView(fileView, FrameLayout.LayoutParams(-1, -1))
         pickerRequest?.let { addPickerButton() }
         setContentView(contentRoot)
-        ensureStorageAccess()
+        if (onboardingWorkspace == null) ensureStorageAccess()
     }
 
     fun showFullscreenOverlay(view: View, onBack: () -> Unit) {

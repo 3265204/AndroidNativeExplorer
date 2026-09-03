@@ -84,5 +84,6 @@ internal data class RenderState(
     val dockMotion: DockMotionSnapshot,
     val deferPreviews: Boolean = false,
     val directoryTransitioning: Boolean = false,
+    val addressOverride: String? = null,
     val insets: UiInsets = UiInsets()
 )

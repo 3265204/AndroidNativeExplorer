@@ -46,6 +46,11 @@ internal class FileSelectionController(
         changed()
     }
 
+    fun resetClickSequence() {
+        lastClickPath = null
+        lastClickTime = 0L
+    }
+
     fun replace(file: File?) {
         selected.clear()
         if (file != null) selected += file.absolutePath
@@ -70,8 +75,7 @@ internal class FileSelectionController(
 
     fun click(file: File) {
         if (multiSelect) {
-            lastClickPath = null
-            lastClickTime = 0L
+            resetClickSequence()
             set(file, !contains(file))
             return
         }
@@ -79,8 +83,7 @@ internal class FileSelectionController(
         val doubleClick = lastClickPath == file.absolutePath &&
             now - lastClickTime <= doubleClickTimeoutMs
         if (doubleClick) {
-            lastClickPath = null
-            lastClickTime = 0L
+            resetClickSequence()
             if (file.isDirectory) openDirectory(file) else openFile(file)
             return
         }

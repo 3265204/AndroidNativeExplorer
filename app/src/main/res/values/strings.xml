@@ -8,6 +8,36 @@
     <string name="pictures">图片</string>
     <string name="tab_number">标签 %1$d</string>
 
+    <string name="tutorial_select_title">单击选择</string>
+    <string name="tutorial_open_title">双击打开</string>
+    <string name="tutorial_dock_drag_title">拖到 Dock 目录</string>
+    <string name="tutorial_copy_paste_title">复制与粘贴</string>
+    <string name="tutorial_tabs_title">使用多标签</string>
+    <string name="tutorial_find_moved_title">查看移动结果</string>
+    <string name="tutorial_long_press_menu_title">长按打开菜单</string>
+    <string name="tutorial_complete_required">请先完成新手练习</string>
+    <string name="tutorial_inline_progress">%1$d / %2$d</string>
+    <string name="tutorial_waiting_for_items">正在准备练习文件…</string>
+    <string name="tutorial_complete_toast">新手引导完成</string>
+    <string name="tutorial_workspace_root">练习区</string>
+    <string name="tutorial_workspace_address">新手练习 / %1$s</string>
+    <string name="tutorial_workspace_archive">归档</string>
+    <string name="tutorial_workspace_copies">副本</string>
+    <string name="tutorial_workspace_sample">旅行照片</string>
+    <string name="tutorial_workspace_note">说明.txt</string>
+    <string name="tutorial_workspace_note_content">这是 ANE 新手引导创建的临时练习文件。</string>
+    <string name="tutorial_virtual_select">这是临时练习文件夹“%1$s”。单击选中它，后面的操作都只影响练习数据。</string>
+    <string name="tutorial_virtual_move">把“%1$s”长按拖到下方“%2$s”标签。松手后它会从练习区移到该目录；这里只操作临时练习文件。</string>
+    <string name="tutorial_virtual_move_release">已对准“%2$s”。松手后，“%1$s”会从练习区移到该目录。</string>
+    <string name="tutorial_virtual_find_moved">点击“%1$s”标签，确认“%2$s”已经从练习区移动到这里。</string>
+    <string name="tutorial_virtual_long_press">“%1$s”已经移动成功。现在长按它但不要拖动，等待文件菜单出现。</string>
+    <string name="tutorial_virtual_choose_copy">在长按菜单中点击“复制”。“%1$s”会进入剪贴板，归档中的原件仍会保留。</string>
+    <string name="tutorial_virtual_choose_copy_destination">点击“%1$s”标签，把它作为这次粘贴的目标目录。</string>
+    <string name="tutorial_virtual_open_paste">当前目录是“%1$s”。点击右下角 +，打开当前目录的操作菜单。</string>
+    <string name="tutorial_virtual_choose_paste">点击“粘贴到当前目录”。“%1$s”的副本将真实出现在“%2$s”中。</string>
+    <string name="tutorial_virtual_open">副本已经粘贴完成。快速双击“%1$s”，在新标签中打开这个文件夹。</string>
+    <string name="tutorial_virtual_tabs">文件夹已在新标签中打开。点击高亮标签，体验在多个目录间切换。</string>
+
     <string name="storage_permission_prompt">请允许“所有文件访问权限”以浏览本地文件</string>
     <string name="storage_permission_required">需要“所有文件访问权限”</string>
     <string name="storage_permission_hint">点击左上角菜单可重新打开权限设置</string>

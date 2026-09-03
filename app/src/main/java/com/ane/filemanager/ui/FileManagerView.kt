@@ -2,6 +2,7 @@ package com.ane.filemanager.ui
 
 import android.content.Intent
 import android.graphics.Canvas
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -40,6 +41,9 @@ import com.ane.filemanager.ui.motion.GestureTiming
 import com.ane.filemanager.ui.motion.DockMotionController
 import com.ane.filemanager.ui.motion.InertialScrollController
 import com.ane.filemanager.ui.motion.ScrollAxis
+import com.ane.filemanager.ui.onboarding.InlineOnboardingCoach
+import com.ane.filemanager.ui.onboarding.OnboardingWorkspace
+import com.ane.filemanager.ui.onboarding.TutorialProgress.Step
 import com.ane.filemanager.ui.render.FileManagerRenderer
 import com.ane.filemanager.ui.selection.FileSelectionController
 import com.ane.filemanager.ui.sort.FileSortController
@@ -57,7 +61,9 @@ internal class FileManagerView(
     private val pickerAllowsMultiple: Boolean = false,
     private val fileFilter: (File) -> Boolean = { true },
     private val onPickerFileOpened: ((File) -> Unit)? = null,
-    onSelectionChanged: (List<File>) -> Unit = {}
+    onSelectionChanged: (List<File>) -> Unit = {},
+    private val onboardingWorkspace: OnboardingWorkspace? = null,
+    onOnboardingCompleted: () -> Unit = {}
 ) : View(host) {
     private val density = resources.displayMetrics.density
     private fun dp(value: Float) = value * density
@@ -81,9 +87,10 @@ internal class FileManagerView(
     private lateinit var fileActions: FileActionController
     private lateinit var plugins: PluginRegistry
     private lateinit var menus: FileMenuCoordinator
+    private val onboarding = InlineOnboardingCoach(host, onboardingWorkspace, onOnboardingCompleted)
     private val selection = FileSelectionController(
-        openFile = ::openFile,
-        openDirectory = { navigateTo(it) },
+        openFile = { file -> onboarding.opened(file); openFile(file) },
+        openDirectory = { directory -> onboarding.opened(directory); navigateTo(directory) },
         invalidate = { invalidate() },
         doubleClickTimeoutMs = GestureTiming.doubleTapTimeoutMs,
         onSelectionChanged = onSelectionChanged
@@ -105,7 +112,7 @@ internal class FileManagerView(
         }
     }
 
-    private val storageRoot = host.initialDirectory()
+    private val storageRoot = onboardingWorkspace?.root ?: host.initialDirectory()
     private val transactions = FileTransactionService(storageRoot)
     private val dockStore = DockSessionStore(context)
     private lateinit var dock: DockSessionController
@@ -149,6 +156,8 @@ internal class FileManagerView(
     private var slideSelecting = false
     private var slideCandidateFile: File? = null
     private var directMouseDragCandidate = false
+    private var onboardingBlockedTouch = false
+    private var onboardingActionPending = false
     private var lastSecondaryClickTime = 0L
     private var lastSecondaryClickX = 0f
     private var lastSecondaryClickY = 0f
@@ -172,10 +181,12 @@ internal class FileManagerView(
                 }
             }
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            handler.postDelayed(
-                longPressMenuRunnable,
-                GestureTiming.DRAG_DECISION_WINDOW_MS
-            )
+            if (!onboarding.active || onboarding.step != Step.MOVE_TO_DOCK) {
+                handler.postDelayed(
+                    longPressMenuRunnable,
+                    GestureTiming.DRAG_DECISION_WINDOW_MS
+                )
+            }
             invalidate()
         }
     }
@@ -185,7 +196,10 @@ internal class FileManagerView(
         val tabIndex = draggedTab?.let(tabs::indexOf)?.takeIf { it in tabs.indices }
         when {
             tabIndex != null -> menus.beginTabEdit(tabIndex, downX, downY)
-            downFile != null -> menus.showFile(downFile!!, downX, downY)
+            downFile != null -> {
+                menus.showFile(downFile!!, downX, downY)
+                onboarding.longPressMenuOpened(downFile!!)
+            }
             else -> return
         }
         longPressMenuShown = true
@@ -203,22 +217,33 @@ internal class FileManagerView(
         contentDescription = host.getString(R.string.file_manager_description)
         setLayerType(LAYER_TYPE_HARDWARE, null)
         val root = storageRoot
-        val storageLabel = s(R.string.storage)
-        val defaultTabs = mutableListOf(BrowserTab(storageLabel, root, true))
-        listOf(
-            "Download" to R.string.downloads,
-            "Documents" to R.string.documents,
-            "Pictures" to R.string.pictures
-        ).forEach { (folder, label) ->
-            File(root, folder).takeIf(File::isDirectory)?.let {
-                defaultTabs += BrowserTab(host.getString(label), it, true)
+        val storageLabel = onboardingWorkspace?.rootLabel ?: s(R.string.storage)
+        val defaultTabs = if (onboardingWorkspace != null) {
+            mutableListOf(
+                BrowserTab(onboardingWorkspace.rootLabel, root, true),
+                BrowserTab(onboardingWorkspace.moveTargetLabel, onboardingWorkspace.moveTarget, true),
+                BrowserTab(onboardingWorkspace.copyTargetLabel, onboardingWorkspace.copyTarget, true)
+            )
+        } else {
+            mutableListOf(BrowserTab(storageLabel, root, true)).apply {
+                listOf(
+                    "Download" to R.string.downloads,
+                    "Documents" to R.string.documents,
+                    "Pictures" to R.string.pictures
+                ).forEach { (folder, label) ->
+                    File(root, folder).takeIf(File::isDirectory)?.let {
+                        add(BrowserTab(host.getString(label), it, true))
+                    }
+                }
             }
         }
         val labelForDirectory: (File) -> String = { directory ->
             if (directory.name == "0") s(R.string.storage)
             else directory.name.ifBlank { s(R.string.storage) }
         }
-        val restored = dockStore.restore(root, storageLabel, labelForDirectory)
+        val restored = if (onboardingWorkspace == null) {
+            dockStore.restore(root, storageLabel, labelForDirectory)
+        } else null
         dock = DockSessionController(
             initialDirectory = root,
             initialTabs = restored?.tabs ?: defaultTabs,
@@ -240,7 +265,10 @@ internal class FileManagerView(
             replaceSelection = selection::replace,
             exitMultiSelect = selection::exitMultiSelect,
             setBusy = { message -> busyText = message; invalidate() },
-            refresh = { refresh() }
+            refresh = { refresh() },
+            onCopied = onboarding::copied,
+            onMoveCompleted = onboarding::moveCompleted,
+            onPasteCompleted = onboarding::pasteCompleted
         )
         plugins = PluginRegistry(
             activity = host,
@@ -289,7 +317,9 @@ internal class FileManagerView(
     }
 
     fun persistSession() {
-        if (::dock.isInitialized) dockStore.save(tabs, activeTab, durable = true)
+        if (onboardingWorkspace == null && ::dock.isInitialized) {
+            dockStore.save(tabs, activeTab, durable = true)
+        }
     }
 
     fun selectedFiles(): List<File> = selection.files().filter(File::isFile)
@@ -297,7 +327,7 @@ internal class FileManagerView(
     fun pickerDirectory(): File = currentDirectory
 
     private fun persistDock() {
-        if (::dock.isInitialized) dockStore.save(tabs, activeTab)
+        if (onboardingWorkspace == null && ::dock.isInitialized) dockStore.save(tabs, activeTab)
     }
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
@@ -350,7 +380,7 @@ internal class FileManagerView(
             items = items,
             selected = selection.paths,
             multiSelect = selection.multiSelect,
-            canAccessStorage = host.hasStorageAccess(),
+            canAccessStorage = onboardingWorkspace != null || host.hasStorageAccess(),
             canReadDirectory = currentDirectory.canRead(),
             scrollY = scrollY,
             dockScrollX = dockScrollX,
@@ -375,6 +405,9 @@ internal class FileManagerView(
             dockMotion = dockMotion.snapshot(),
             deferPreviews = scrolling || inertialScroll.isActive,
             directoryTransitioning = directoryTransitioning,
+            addressOverride = onboardingWorkspace?.let {
+                s(R.string.tutorial_workspace_address, tabs[activeTab].label)
+            },
             insets = systemInsets
         ))
         maxScroll = renderer.maxScroll
@@ -389,7 +422,59 @@ internal class FileManagerView(
                 postInvalidateOnAnimation()
             }
         }
+        onboarding.draw(
+            canvas,
+            onboardingTarget(),
+            onboardingSecondaryTarget(),
+            dragging,
+            longTriggered
+        )
     }
+
+    private fun onboardingTarget(): RectF? {
+        if (!onboarding.active) return null
+        return when (onboarding.step) {
+            Step.SELECT, Step.MOVE_TO_DOCK, Step.LONG_PRESS_MENU, Step.OPEN ->
+                renderer.fileHits.firstOrNull {
+                it.file.absolutePath == onboarding.targetPath
+            }?.rect
+            Step.OPEN_MOVE_DESTINATION, Step.OPEN_COPY_DESTINATION, Step.TABS ->
+                onboardingTargetTabIndex()?.let { index ->
+                    renderer.tabHits.firstOrNull { it.index == index }?.rect
+                }
+            Step.PASTE_OPEN_MENU -> {
+                val centerX = contentRight - renderer.fabOffset
+                val centerY = contentBottom - renderer.fabOffset
+                RectF(centerX - dp(34f), centerY - dp(34f), centerX + dp(34f), centerY + dp(34f))
+            }
+            Step.COPY_CHOOSE -> renderer.menuHits.firstOrNull {
+                it.action.label == s(R.string.action_copy_selected) ||
+                    it.action.label == s(R.string.action_copy)
+            }?.rect
+            Step.PASTE_CHOOSE -> renderer.menuHits.firstOrNull {
+                it.action.label == s(R.string.action_paste_here)
+            }?.rect
+            Step.COMPLETE -> null
+        }?.let(::RectF)
+    }
+
+    private fun onboardingSecondaryTarget(): RectF? {
+        if (!onboarding.active || onboarding.step != Step.MOVE_TO_DOCK) return null
+        val index = onboardingTargetTabIndex() ?: return null
+        return renderer.tabHits.firstOrNull { it.index == index }?.rect
+    }
+
+    private fun onboardingTargetTabIndex(): Int? = when (onboarding.step) {
+        Step.MOVE_TO_DOCK, Step.OPEN_MOVE_DESTINATION ->
+            onboarding.workspace?.moveTarget?.let(::tabIndexForDirectory)
+        Step.OPEN_COPY_DESTINATION -> onboarding.workspace?.copyTarget?.let(::tabIndexForDirectory)
+        Step.TABS -> renderer.tabHits.firstOrNull { it.index != activeTab }?.index
+        else -> null
+    }
+
+    private fun tabIndexForDirectory(directory: File): Int? = tabs.indexOfFirst {
+        sameDirectory(it.directory, directory)
+    }.takeIf { it >= 0 }
 
     override fun computeScroll() {
         var changed = false
@@ -413,6 +498,31 @@ internal class FileManagerView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (onboarding.active) {
+            if (event.pointerCount > 1 || event.isSecondaryMouseInput()) {
+                onboardingBlockedTouch = true
+                resetGesture()
+                return true
+            }
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                val target = onboardingTarget()
+                onboardingBlockedTouch = onboardingActionPending || busyText != null ||
+                    directoryTransitioning || target == null || !target.contains(event.x, event.y)
+                if (onboardingBlockedTouch) {
+                    if (target != null && busyText == null && !onboardingActionPending) {
+                        performHapticFeedback(HapticFeedbackConstants.REJECT)
+                    }
+                    invalidate()
+                    return true
+                }
+            } else if (onboardingBlockedTouch) {
+                if (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    onboardingBlockedTouch = false
+                }
+                return true
+            }
+        }
         if (handleSecondaryMousePress(event)) return true
         if (busyText != null) return true
         when (event.actionMasked) {
@@ -443,6 +553,7 @@ internal class FileManagerView(
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if (onboarding.active) return true
         if (handleSecondaryMousePress(event)) return true
         return super.onGenericMotionEvent(event)
     }
@@ -471,7 +582,17 @@ internal class FileManagerView(
         return true
     }
 
+    private fun MotionEvent.isSecondaryMouseInput(): Boolean =
+        isFromSource(InputDevice.SOURCE_MOUSE) && (
+            actionButton == MotionEvent.BUTTON_SECONDARY ||
+                buttonState and MotionEvent.BUTTON_SECONDARY != 0
+            )
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (onboarding.active) {
+            performHapticFeedback(HapticFeedbackConstants.REJECT)
+            return true
+        }
         val shortcut = DesktopShortcutResolver.resolve(keyCode, event)
             ?: return super.onKeyDown(keyCode, event)
         if (busyText != null) return true
@@ -520,9 +641,14 @@ internal class FileManagerView(
         // A selection handle is only a slide-selection candidate until the pointer moves.
         // Keeping the long-press timer alive restores folder dragging from the same area.
         slideCandidateFile = if (inDock) null else renderer.selectionHandleFile(x, y)
-        directMouseDragCandidate = menu.kind == MenuKind.NONE && !dockEditing && fromMouse &&
+        directMouseDragCandidate = !onboarding.active && menu.kind == MenuKind.NONE && !dockEditing && fromMouse &&
             slideCandidateFile == null && downFile?.let(selection::contains) == true
-        if (menu.kind == MenuKind.NONE && !dockEditing && (downFile != null || downTab >= 0)) {
+        val onboardingAllowsLongPress = !onboarding.active ||
+            downFile != null && (
+                onboarding.step == Step.MOVE_TO_DOCK || onboarding.step == Step.LONG_PRESS_MENU
+                )
+        if (menu.kind == MenuKind.NONE && !dockEditing &&
+            (downFile != null || downTab >= 0) && onboardingAllowsLongPress) {
             handler.postDelayed(longPressRunnable, GestureTiming.DRAG_READY_TIMEOUT_MS)
         }
     }
@@ -581,7 +707,7 @@ internal class FileManagerView(
         handler.removeCallbacks(longPressRunnable)
         handler.removeCallbacks(longPressMenuRunnable)
         if (longTriggered) {
-            if (dragging) finishDrag(x, y)
+            if (dragging) finishPracticeOrRealDrag(x, y)
             resetGesture()
             return
         }
@@ -598,7 +724,12 @@ internal class FileManagerView(
                 return
             }
             if (action != null) {
-                menu.close { action.runAt?.invoke(x, y) ?: action.run() }
+                onboardingActionPending = onboarding.active
+                menu.close {
+                    action.runAt?.invoke(x, y) ?: action.run()
+                    onboardingActionPending = false
+                    invalidate()
+                }
                 resetGesture()
                 return
             }
@@ -627,7 +758,7 @@ internal class FileManagerView(
                 removeManagedTab(downCloseTab!!)
             dockEditing && !moved && downCloseTab != null -> Unit
             dockEditing && !moved && downTab < 0 -> dockEditing = false
-            dragging -> finishDrag(x, y)
+            dragging -> finishPracticeOrRealDrag(x, y)
             tabDragging -> Unit
             slideSelecting -> Unit
             !moved && y in topBarTop..topBarBottom && x < contentLeft + renderer.appMenuHitWidth ->
@@ -637,13 +768,28 @@ internal class FileManagerView(
                 renderer.isSortButton(width, x, systemInsets.right) ->
                 menus.showSort(topBarTop, topBarBottom, contentRight)
             !moved && y in topBarTop..topBarBottom -> editAddress()
-            !moved && renderer.isFab(width, height, x, y, systemInsets.right, systemInsets.bottom) ->
+            !moved && renderer.isFab(width, height, x, y, systemInsets.right, systemInsets.bottom) -> {
                 menus.showFab(contentRight, contentBottom, renderer.fabOffset)
+                onboarding.menuOpened()
+            }
             !moved && downTab >= 0 -> switchTab(downTab)
             !moved && downFile != null -> {
                 renderer.restartFileMarquee(downFile!!)
                 if (onPickerFileOpened != null && downFile!!.isDirectory) navigateTo(downFile!!)
-                else selection.click(downFile!!)
+                else {
+                    val onboardingStep = onboarding.step
+                    when (onboardingStep) {
+                        Step.MOVE_TO_DOCK, Step.LONG_PRESS_MENU ->
+                            performHapticFeedback(HapticFeedbackConstants.REJECT)
+                        else -> {
+                            selection.click(downFile!!)
+                            if (onboardingStep == Step.SELECT && selection.contains(downFile!!)) {
+                                onboarding.selected(downFile!!)
+                                selection.resetClickSequence()
+                            }
+                        }
+                    }
+                }
             }
             !moved && y in topBarBottom..contentBottom -> selection.clear()
         }
@@ -842,10 +988,15 @@ internal class FileManagerView(
         if (dock.switchTo(index)) {
             sorting.markOpened(dock.currentDirectory)
             resetSelectionForNavigation(); onNavigationChanged()
+            onboarding.tabSwitched(dock.currentDirectory)
         }
     }
 
     fun handleBack(): Boolean {
+        if (onboarding.active) {
+            performHapticFeedback(HapticFeedbackConstants.REJECT)
+            return true
+        }
         if (menu.kind != MenuKind.NONE) { menu.close(); return true }
         if (dockEditing) { dockEditing = false; invalidate(); return true }
         if (dragging || tabDragging) { resetGesture(); return true }
@@ -924,6 +1075,23 @@ internal class FileManagerView(
         if (tabs.size < 2) return
         val index = (activeTab + direction + tabs.size) % tabs.size
         switchTab(index)
+    }
+
+    private fun finishPracticeOrRealDrag(x: Float, y: Float) {
+        if (!onboarding.active) {
+            finishDrag(x, y)
+            return
+        }
+        val targetTab = renderer.tabHits.lastOrNull { it.rect.contains(x, y) }?.index
+        val targetFolder = renderer.fileHits.lastOrNull {
+            it.file.isDirectory && it.rect.contains(x, y)
+        }?.file
+        val target = targetTab?.let { tabs.getOrNull(it)?.directory } ?: targetFolder
+        if (onboarding.acceptsMoveTo(target)) {
+            finishDrag(x, y)
+        } else {
+            performHapticFeedback(HapticFeedbackConstants.REJECT)
+        }
     }
 
     private fun finishDrag(x: Float, y: Float) {

@@ -7,6 +7,36 @@
     <string name="pictures">Pictures</string>
     <string name="tab_number">Tab %1$d</string>
 
+    <string name="tutorial_select_title">Tap to select</string>
+    <string name="tutorial_open_title">Double-tap to open</string>
+    <string name="tutorial_dock_drag_title">Drag to a Dock folder</string>
+    <string name="tutorial_copy_paste_title">Copy and paste</string>
+    <string name="tutorial_tabs_title">Use multiple tabs</string>
+    <string name="tutorial_find_moved_title">Check the move</string>
+    <string name="tutorial_long_press_menu_title">Hold for the menu</string>
+    <string name="tutorial_complete_required">Complete the quick practice first</string>
+    <string name="tutorial_inline_progress">%1$d / %2$d</string>
+    <string name="tutorial_waiting_for_items">Preparing the practice files…</string>
+    <string name="tutorial_complete_toast">Quick practice complete</string>
+    <string name="tutorial_workspace_root">Practice</string>
+    <string name="tutorial_workspace_address">Tutorial / %1$s</string>
+    <string name="tutorial_workspace_archive">Archive</string>
+    <string name="tutorial_workspace_copies">Copies</string>
+    <string name="tutorial_workspace_sample">Travel photos</string>
+    <string name="tutorial_workspace_note">Read me.txt</string>
+    <string name="tutorial_workspace_note_content">This temporary practice file was created by ANE onboarding.</string>
+    <string name="tutorial_virtual_select">This is the temporary “%1$s” practice folder. Select it; every following action affects practice data only.</string>
+    <string name="tutorial_virtual_move">Hold and drag “%1$s” to the “%2$s” tab below. On release it moves out of Practice; only temporary tutorial files are affected.</string>
+    <string name="tutorial_virtual_move_release">You’re over “%2$s”. Release to move “%1$s” out of Practice and into that folder.</string>
+    <string name="tutorial_virtual_find_moved">Tap the “%1$s” tab and confirm that “%2$s” moved here from Practice.</string>
+    <string name="tutorial_virtual_long_press">“%1$s” moved successfully. Now hold it without dragging and wait for the file menu.</string>
+    <string name="tutorial_virtual_choose_copy">Tap Copy in the hold menu. “%1$s” enters the clipboard while the original remains in Archive.</string>
+    <string name="tutorial_virtual_choose_copy_destination">Tap the “%1$s” tab to make it the paste destination.</string>
+    <string name="tutorial_virtual_open_paste">The current folder is “%1$s”. Tap + to open actions for this folder.</string>
+    <string name="tutorial_virtual_choose_paste">Tap Paste here. A real copy of “%1$s” will appear in “%2$s”.</string>
+    <string name="tutorial_virtual_open">The copy is ready. Double-tap “%1$s” to open that folder in a new tab.</string>
+    <string name="tutorial_virtual_tabs">The folder opened in a new tab. Tap the highlighted tab to switch between locations.</string>
+
     <string name="storage_permission_prompt">Allow “All files access” to browse local files</string>
     <string name="storage_permission_required">“All files access” is required</string>
     <string name="storage_permission_hint">Open the hamburger menu to return to permission settings</string>

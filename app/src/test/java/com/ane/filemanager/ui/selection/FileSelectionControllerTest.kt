@@ -31,6 +31,28 @@ class FileSelectionControllerTest {
         assertFalse(controller.contains(second))
     }
 
+    @Test
+    fun `reset click sequence prevents the next tap from opening`() {
+        val file = File("/selection/file")
+        var now = 0L
+        var opened = false
+        val controller = FileSelectionController(
+            openFile = { opened = true },
+            openDirectory = { opened = true },
+            invalidate = {},
+            doubleClickTimeoutMs = 300L,
+            monotonicTimeMs = { now }
+        )
+
+        controller.click(file)
+        controller.resetClickSequence()
+        now = 100L
+        controller.click(file)
+
+        assertFalse(opened)
+        assertTrue(controller.contains(file))
+    }
+
     private fun controller() = FileSelectionController(
         openFile = {},
         openDirectory = {},

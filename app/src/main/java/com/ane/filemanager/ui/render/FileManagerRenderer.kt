@@ -232,7 +232,7 @@ internal class FileManagerRenderer(
             if (tab.directory.parentFile != null) color("text") else color("muted"))
         val title = if (state.multiSelect) {
             context.getString(R.string.multi_select_count, state.selected.size)
-        } else tab.directory.absolutePath
+        } else state.addressOverride ?: tab.directory.absolutePath
         val verticalPad = dp(8f)
         val sortX = contentRight - dp(29f)
         val addressRight = (contentRight - dp(62f)).coerceAtLeast(contentLeft)
