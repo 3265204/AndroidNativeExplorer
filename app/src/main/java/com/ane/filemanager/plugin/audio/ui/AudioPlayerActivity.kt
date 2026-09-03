@@ -7,8 +7,6 @@ import android.media.AudioAttributes
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -33,11 +31,20 @@ import com.ane.filemanager.plugin.api.ui.ui
 import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
 import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
 import com.ane.filemanager.plugin.audio.AudioPluginFiles
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 
 class AudioPlayerActivity : Activity() {
-    private val handler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var player: MediaPlayer? = null
     private var artwork: Bitmap? = null
@@ -56,19 +63,23 @@ class AudioPlayerActivity : Activity() {
     private var draggingSeek = false
     private var resumePosition = 0
     private var artworkGeneration = 0
-    private val progressUpdate = object : Runnable {
-        override fun run() {
-            val current = player
-            if (current != null) {
-                try {
-                    if (!draggingSeek) {
-                        val position = current.currentPosition.coerceAtLeast(0)
-                        seekBar.progress = position
-                        elapsed.text = formatTime(position)
-                    }
-                } catch (_: IllegalStateException) { }
+    private var artworkJob: Job? = null
+
+    private fun startProgressUpdates() {
+        scope.launch {
+            while (isActive) {
+                val current = player
+                if (current != null) {
+                    try {
+                        if (!draggingSeek) {
+                            val position = current.currentPosition.coerceAtLeast(0)
+                            seekBar.progress = position
+                            elapsed.text = formatTime(position)
+                        }
+                    } catch (_: IllegalStateException) { }
+                }
+                delay(PROGRESS_UPDATE_INTERVAL_MS)
             }
-            handler.postDelayed(this, PROGRESS_UPDATE_INTERVAL_MS)
         }
     }
 
@@ -171,7 +182,7 @@ class AudioPlayerActivity : Activity() {
 
         sequenceStage.refresh()
         showCurrentAudio()
-        handler.post(progressUpdate)
+        startProgressUpdates()
     }
 
     private fun switchAudio() {
@@ -262,27 +273,32 @@ class AudioPlayerActivity : Activity() {
 
     private fun loadArtwork(file: File) {
         val generation = artworkGeneration
-        Thread {
-            val loaded = try {
-                val bytes = MediaMetadataRetriever().run {
-                    setDataSource(file.absolutePath)
-                    val picture = embeddedPicture
-                    release()
-                    picture
-                }
-                bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
-            } catch (_: Exception) { null }
-            runOnUiThread {
-                if (isFinishing || isDestroyed || generation != artworkGeneration) {
-                    loaded?.recycle()
-                } else if (loaded != null) {
-                    artwork = loaded
-                    albumView.setImageBitmap(loaded)
-                    albumView.visibility = View.VISIBLE
-                    noteView.visibility = View.GONE
+        artworkJob?.cancel()
+        artworkJob = scope.launch {
+            val loaded = withContext(Dispatchers.IO) {
+                try {
+                    val bytes = MediaMetadataRetriever().run {
+                        try {
+                            setDataSource(file.absolutePath)
+                            embeddedPicture
+                        } finally {
+                            release()
+                        }
+                    }
+                    bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                } catch (_: Exception) {
+                    null
                 }
             }
-        }.start()
+            if (isFinishing || isDestroyed || generation != artworkGeneration) {
+                loaded?.recycle()
+            } else if (loaded != null) {
+                artwork = loaded
+                albumView.setImageBitmap(loaded)
+                albumView.visibility = View.VISIBLE
+                noteView.visibility = View.GONE
+            }
+        }
     }
 
     override fun onPause() {
@@ -305,7 +321,7 @@ class AudioPlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(progressUpdate)
+        scope.cancel()
         artworkGeneration++
         player?.release()
         player = null

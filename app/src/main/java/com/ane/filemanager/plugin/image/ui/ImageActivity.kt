@@ -24,9 +24,16 @@ import com.ane.filemanager.plugin.api.ui.ui
 import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
 import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
 import com.ane.filemanager.plugin.image.ImagePluginFiles
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class ImageActivity : Activity() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var bitmap: Bitmap? = null
     private lateinit var playlist: AnePluginFileSequence
     private lateinit var pluginUi: AnePluginUi
@@ -87,6 +94,7 @@ class ImageActivity : Activity() {
 
     override fun onDestroy() {
         loadGeneration++
+        scope.cancel()
         bitmap?.recycle()
         bitmap = null
         if (!isChangingConfigurations) AnePluginHostSessions.release(pluginSessionId)
@@ -112,33 +120,33 @@ class ImageActivity : Activity() {
     private fun loadImage(file: PluginFile, direction: AneMediaDirection?) {
         val generation = ++loadGeneration
         progress.visibility = android.view.View.VISIBLE
-        Thread {
-            val loaded = try { decodeSampled(file.toFile(), 4096) } catch (_: Exception) { null }
-            runOnUiThread {
-                if (isFinishing || isDestroyed || generation != loadGeneration) {
-                    loaded?.recycle()
-                    return@runOnUiThread
-                }
-                progress.visibility = android.view.View.GONE
-                if (loaded == null) {
-                    switching = false
-                    Toast.makeText(this, R.string.image_decode_failed, Toast.LENGTH_SHORT).show()
-                } else {
-                    bitmap = loaded
-                    imageView.setImageBitmap(loaded)
-                    if (direction != null) {
-                        val stageWidth = imageView.width.coerceAtLeast(resources.displayMetrics.widthPixels)
-                        pluginUi.animateMediaEnter(imageView, direction, stageWidth) {
-                            switching = false
-                        }
-                    } else {
-                        imageView.translationX = 0f
-                        imageView.alpha = 1f
+        scope.launch {
+            val loaded = withContext(Dispatchers.IO) {
+                try { decodeSampled(file.toFile(), 4096) } catch (_: Exception) { null }
+            }
+            if (isFinishing || isDestroyed || generation != loadGeneration) {
+                loaded?.recycle()
+                return@launch
+            }
+            progress.visibility = android.view.View.GONE
+            if (loaded == null) {
+                switching = false
+                Toast.makeText(this@ImageActivity, R.string.image_decode_failed, Toast.LENGTH_SHORT).show()
+            } else {
+                bitmap = loaded
+                imageView.setImageBitmap(loaded)
+                if (direction != null) {
+                    val stageWidth = imageView.width.coerceAtLeast(resources.displayMetrics.widthPixels)
+                    pluginUi.animateMediaEnter(imageView, direction, stageWidth) {
                         switching = false
                     }
+                } else {
+                    imageView.translationX = 0f
+                    imageView.alpha = 1f
+                    switching = false
                 }
             }
-        }.start()
+        }
     }
 
     private fun decodeSampled(file: File, maxSide: Int): Bitmap? {

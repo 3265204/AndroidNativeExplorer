@@ -98,9 +98,9 @@ File operations are layered in three levels:
 
 1. `FileOps`: low-level copy, move, delete and path checks.
 2. `FileOperationService`: returns structured `FileResult`, converting exceptions to `FileProblem`.
-3. `FileActionController`: connects selection, dialogs, background threads, branching operation history and UI prompts.
+3. `FileActionController`: connects selection, dialogs, lifecycle-bound coroutines, branching operation history, and UI prompts.
 
-`FileTransactionService` is the sole session owner of the file worker, trash payloads, and history tree. Normal UI actions, text-plugin writes, and plugin-output commits share its single-thread queue. `FileActionController` now owns presentation, selection, and failure interaction only; the composition root closes the transaction service last.
+`FileTransactionService` is the sole session owner of the file worker, trash payloads, and history tree. Normal UI actions, text-plugin writes, and plugin-output commits share its single-thread queue. Its suspending entry point does not occupy the caller thread; cancelling a caller only stops result delivery, while an accepted filesystem transaction still finishes safely. `FileActionController` now owns presentation, selection, and failure interaction only; the composition root closes the transaction service last.
 
 Deletion is not immediate destruction: the file is moved to `.ane-filemanager-trash` under the storage root. `FileHistoryController` stores bidirectional actions with parent/child relationships; recording after undo preserves the old branch, and history can redo the newest child or check out a node explicitly. Records remain process-session only, with no fixed step cap. Old trash is cleaned on restart, so history is not persisted across processes.
 

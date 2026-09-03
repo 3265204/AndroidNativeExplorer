@@ -33,8 +33,15 @@ import com.ane.filemanager.pluginmanager.pty.HostPtyTerminalSession
 import com.ane.filemanager.operation.FileTransactionService
 import com.ane.filemanager.ui.PluginUiService
 import dalvik.system.DexClassLoader
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class PluginAction(val label: String, val run: () -> Unit)
@@ -61,7 +68,7 @@ internal class PluginRegistry(
 ) {
     private val preferences = activity.getSharedPreferences("ane-plugin-state", 0)
     private val installer = PluginPackageInstaller(activity)
-    private val executor = Executors.newSingleThreadExecutor { task -> Thread(task, "ane-plugin-worker") }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
     private val closed = AtomicBoolean(false)
     private var records = emptyList<PluginRecord>()
 
@@ -105,12 +112,16 @@ internal class PluginRegistry(
         ) {
             if (closed.get()) return
             setBusy(label)
-            executor.execute {
-                val result = runCatching(task).getOrElse {
-                    PluginTaskResult(false, it.userMessage())
+            scope.launch {
+                val result = try {
+                    runInterruptible { task() }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    PluginTaskResult(false, error.userMessage())
                 }
-                activity.runOnUiThread {
-                    if (closed.get()) return@runOnUiThread
+                withContext(Dispatchers.Main.immediate) {
+                    if (closed.get()) return@withContext
                     setBusy(null)
                     val message = result.message
                     if (!result.success && !message.isNullOrBlank()) activity.toast(message)
@@ -247,7 +258,7 @@ internal class PluginRegistry(
         if (closed.compareAndSet(false, true)) {
             unloadAll()
             AnePluginHostSessions.releaseHost(pluginHost)
-            executor.shutdown()
+            scope.cancel()
         }
     }
 

@@ -72,8 +72,9 @@
 - UI 层不得直接调用 `File.renameTo`、递归删除或自行复制流。
 - 底层异常在 `FileOperationService` 转为 `FileResult`/`FileProblem`。
 - 大文件复制、移动、删除和撤回不得在主线程执行。
-- 文件事务使用 `FileActionController` 的单线程队列，避免并发覆盖和回收站竞争。
-- 执行器必须有明确生命周期：关闭后拒绝新任务，不强制中断正在进行的文件事务，并屏蔽失效 UI 回调。
+- 文件事务使用 `FileTransactionService` 的单线程队列，`FileActionController` 通过挂起入口等待结果，避免并发覆盖和回收站竞争。
+- Activity、View 和业务控制器的异步任务默认使用绑定其生命周期的 `CoroutineScope`；关闭时取消作用域，耗时 I/O 放到 `Dispatchers.IO`，CPU 计算放到 `Dispatchers.Default`，UI 更新留在主调度器。
+- 只有必须维持专用线程、严格有界队列或同步 ABI 的底层边界才保留 `Executor`；它必须有明确生命周期。已接受的文件事务不强制中断，只取消结果投递，避免留下半完成的文件树。
 - 新增可逆操作时同步定义 `PendingUndo`；不可逆操作必须在设计说明中写明原因。
 - 更新 UI、选择和撤回栈必须发生在事务成功之后。
 - 文本编码、BOM 检测和保留编码写回统一使用 `TextFileService`；导入插件通过 `host.files` 调用，禁止在插件目录复制 codec。
@@ -85,7 +86,7 @@
 - 持久化格式只由 `DockSessionStore` 负责。
 - 新增持久化字段时必须兼容旧数据缺失、路径不存在和索引越界。
 - 选择和撤回属于会话状态，除非产品要求改变，否则不写入磁盘。
-- Activity 或 View 销毁时必须清理 Handler、动画、媒体播放器和后台执行器。
+- Activity 或 View 销毁时必须取消自有协程作用域，并清理仍保留的 Handler、动画、媒体播放器和底层执行器。
 
 ## 插件界面与编辑器
 
@@ -100,7 +101,7 @@
 - 图片缩放焦点必须保持在双指中心；缩放状态下不触发图片切换。
 - 视频和音频切换后释放旧播放器，保存必要的恢复位置。
 - 文本加载和保存通过 `TextFileService` 保留原编码及 BOM；脏状态、高亮、缩进和编辑交互留在文本插件。
-- 高亮计算放到后台线程，只处理可见区域附近，并通过 revision/token 丢弃过期结果。
+- 高亮计算放到 `Dispatchers.Default`，只处理可见区域附近，并通过取消旧 `Job` 和 revision 丢弃过期结果。
 - Tab 插入四个空格；多行选择支持统一缩进和 Shift+Tab 反缩进。
 
 ## 桌面与键盘
@@ -126,7 +127,7 @@
 - 是否出现新的硬编码用户文案？
 - 是否出现无名称的时间阈值或固定屏幕坐标？
 - 是否在主线程执行文件或媒体重任务？
-- 是否存在未关闭的 Handler、Animator、MediaPlayer 或 Executor？
+- 是否存在未取消的 `CoroutineScope`/`Job`，或未关闭的 Handler、Animator、MediaPlayer、Executor？
 - 窄窗口、横竖屏、字体缩放和系统 Insets 是否正常？
 - 菜单是否只显示当前有效操作？
 - 删除、移动、粘贴和撤回是否覆盖成功与失败路径？

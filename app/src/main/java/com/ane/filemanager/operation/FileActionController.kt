@@ -2,6 +2,12 @@ package com.ane.filemanager.operation
 
 import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -22,6 +28,7 @@ internal class FileActionController(
     private val onMoveCompleted: (sources: List<File>, target: File) -> Unit = { _, _ -> },
     private val onPasteCompleted: (target: File) -> Unit = {}
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val files get() = transactions.files
     private val closed = AtomicBoolean(false)
     private val history get() = transactions.history
@@ -139,32 +146,35 @@ internal class FileActionController(
      * the composition root after plugins have also released their work.
      */
     fun close() {
-        closed.set(true)
+        if (closed.compareAndSet(false, true)) scope.cancel()
     }
 
     private fun <T> performJob(label: String, job: () -> FileResult<T>, onSuccess: (T) -> Unit = {}) {
         if (closed.get()) return
         setBusy(label)
-        val accepted = execute {
-            val result = job()
-            if (closed.get()) return@execute
-            host.runOnUiThread {
-                if (closed.get()) return@runOnUiThread
-                setBusy(null)
-                when (result) {
-                    is FileResult.Success -> {
-                        onSuccess(result.value)
-                        refresh()
-                        host.toast(s(R.string.operation_complete))
-                    }
-                    is FileResult.Failure -> {
-                        refresh()
-                        showProblem(result.problem)
-                    }
+        scope.launch {
+            val result = try {
+                transactions.await(job)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (!closed.get()) setBusy(null)
+                return@launch
+            }
+            if (closed.get()) return@launch
+            setBusy(null)
+            when (result) {
+                is FileResult.Success -> {
+                    onSuccess(result.value)
+                    refresh()
+                    host.toast(s(R.string.operation_complete))
+                }
+                is FileResult.Failure -> {
+                    refresh()
+                    showProblem(result.problem)
                 }
             }
         }
-        if (!accepted) setBusy(null)
     }
 
     private fun performTransfer(
@@ -179,66 +189,71 @@ internal class FileActionController(
     ) {
         if (closed.get()) return
         setBusy(label)
-        val accepted = execute {
-            val result = files.transfer(sources, targetDirectory, moving, completed, skipped, partialMove)
-            if (closed.get()) return@execute
-            host.runOnUiThread {
-                if (closed.get()) return@runOnUiThread
-                setBusy(null)
-                refresh()
-                when (result) {
-                    is FileResult.Success -> finishTransfer(result.value, moving, onFinished)
-                    is FileResult.Failure -> {
-                        val interruption = result.transferInterruption
-                        if (interruption == null) {
-                            showProblem(result.problem)
-                        } else {
-                            val completedAfterSkip = interruption.completed + listOfNotNull(interruption.partialMove)
-                            host.resolveTransferFailure(
-                                problem = result.problem,
-                                onRetry = {
-                                    performTransfer(
-                                        label,
-                                        if (interruption.partialMove == null) {
-                                            listOf(interruption.failed) + interruption.remaining
-                                        } else {
-                                            interruption.remaining
-                                        },
-                                        interruption.targetDirectory,
-                                        interruption.moved,
-                                        interruption.completed,
-                                        interruption.skipped,
-                                        interruption.partialMove,
-                                        onFinished
-                                    )
-                                },
-                                onSkip = {
-                                    performTransfer(
-                                        label,
-                                        interruption.remaining,
-                                        interruption.targetDirectory,
-                                        interruption.moved,
-                                        completedAfterSkip,
-                                        interruption.skipped + 1,
-                                        null,
-                                        onFinished
-                                    )
-                                },
-                                onCancel = {
-                                    finishTransfer(
-                                        TransferBatch(completedAfterSkip, interruption.skipped + 1),
-                                        moving,
-                                        onFinished,
-                                        cancelled = true
-                                    )
-                                }
-                            )
-                        }
+        scope.launch {
+            val result = try {
+                transactions.await {
+                    files.transfer(sources, targetDirectory, moving, completed, skipped, partialMove)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (!closed.get()) setBusy(null)
+                return@launch
+            }
+            if (closed.get()) return@launch
+            setBusy(null)
+            refresh()
+            when (result) {
+                is FileResult.Success -> finishTransfer(result.value, moving, onFinished)
+                is FileResult.Failure -> {
+                    val interruption = result.transferInterruption
+                    if (interruption == null) {
+                        showProblem(result.problem)
+                    } else {
+                        val completedAfterSkip = interruption.completed + listOfNotNull(interruption.partialMove)
+                        host.resolveTransferFailure(
+                            problem = result.problem,
+                            onRetry = {
+                                performTransfer(
+                                    label,
+                                    if (interruption.partialMove == null) {
+                                        listOf(interruption.failed) + interruption.remaining
+                                    } else {
+                                        interruption.remaining
+                                    },
+                                    interruption.targetDirectory,
+                                    interruption.moved,
+                                    interruption.completed,
+                                    interruption.skipped,
+                                    interruption.partialMove,
+                                    onFinished
+                                )
+                            },
+                            onSkip = {
+                                performTransfer(
+                                    label,
+                                    interruption.remaining,
+                                    interruption.targetDirectory,
+                                    interruption.moved,
+                                    completedAfterSkip,
+                                    interruption.skipped + 1,
+                                    null,
+                                    onFinished
+                                )
+                            },
+                            onCancel = {
+                                finishTransfer(
+                                    TransferBatch(completedAfterSkip, interruption.skipped + 1),
+                                    moving,
+                                    onFinished,
+                                    cancelled = true
+                                )
+                            }
+                        )
                     }
                 }
             }
         }
-        if (!accepted) setBusy(null)
     }
 
     private fun finishTransfer(
@@ -256,11 +271,6 @@ internal class FileActionController(
             else -> s(R.string.operation_complete)
         }
         host.toast(message)
-    }
-
-    private fun execute(task: () -> Unit): Boolean {
-        if (closed.get()) return false
-        return transactions.execute(task)
     }
 
     private fun recordTransferUndo(records: List<TransferRecord>, moved: Boolean) {

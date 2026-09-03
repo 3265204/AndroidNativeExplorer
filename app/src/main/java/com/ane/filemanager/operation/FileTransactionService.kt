@@ -2,6 +2,7 @@ package com.ane.filemanager.operation
 
 import com.ane.filemanager.core.file.TextFileService
 import com.ane.filemanager.plugin.api.file.PluginTextEncoding
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutionException
@@ -43,6 +44,26 @@ internal class FileTransactionService(rootDirectory: File) {
             true
         } catch (_: RejectedExecutionException) {
             false
+        }
+    }
+
+    /**
+     * Suspends without occupying a caller thread while the mutation runs on the serialized queue.
+     * Cancellation only stops delivery of the result: an accepted filesystem transaction is
+     * deliberately allowed to finish so it cannot leave a half-mutated tree behind.
+     */
+    suspend fun <T> await(task: () -> T): T = suspendCancellableCoroutine { continuation ->
+        if (closed.get()) {
+            continuation.resumeWith(Result.failure(IOException("File transaction service is closed")))
+            return@suspendCancellableCoroutine
+        }
+        try {
+            executor.execute {
+                val result = runCatching(task)
+                if (continuation.isActive) continuation.resumeWith(result)
+            }
+        } catch (_: RejectedExecutionException) {
+            continuation.resumeWith(Result.failure(IOException("File transaction service is closed")))
         }
     }
 

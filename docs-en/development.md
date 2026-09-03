@@ -72,8 +72,9 @@ File extensions, MIME matching and format detection belong to the specific plugi
 - The UI layer must not call `File.renameTo`, recursive delete, or copy streams itself.
 - Low-level exceptions are converted to `FileResult`/`FileProblem` in `FileOperationService`.
 - Large-file copy, move, delete and undo must not run on the main thread.
-- File transactions use `FileActionController`'s single-thread queue to avoid concurrent overwrites and recycle-bin races.
-- Executors must have an explicit lifecycle: after closing, reject new tasks, do not force-interrupt ongoing file transactions, and suppress stale UI callbacks.
+- File transactions use `FileTransactionService`'s single-thread queue; `FileActionController` awaits results through its suspending entry point to avoid concurrent overwrites and recycle-bin races.
+- Asynchronous work owned by an Activity, View, or business controller uses a lifecycle-bound `CoroutineScope` by default. Cancel the scope on close, run blocking I/O on `Dispatchers.IO`, CPU work on `Dispatchers.Default`, and keep UI updates on the main dispatcher.
+- Retain an `Executor` only at low-level boundaries that require a dedicated thread, a strictly bounded queue, or a synchronous ABI; it must have an explicit lifecycle. Do not force-interrupt accepted file transactions—cancel only result delivery so the filesystem cannot be left half-mutated.
 - When adding a reversible operation, define the corresponding `PendingUndo`; irreversible operations must state the reason in the design notes.
 - Updating UI, selection and the undo stack must happen after the transaction succeeds.
 - Text encoding, BOM detection and encoding-preserving write-back uniformly use `TextFileService`; imported plugins call it through `host.files`, and copying the codec inside a plugin directory is forbidden.
@@ -85,7 +86,7 @@ File extensions, MIME matching and format detection belong to the specific plugi
 - The persistence format is the sole responsibility of `DockSessionStore`.
 - When adding a persisted field, tolerate missing old data, missing paths and out-of-range indices.
 - Selection and undo are session state and are not written to disk unless the product requires it.
-- When an Activity or View is destroyed, clean up Handlers, animations, media players and background executors.
+- When an Activity or View is destroyed, cancel its coroutine scope and clean up any retained Handlers, animations, media players, and low-level executors.
 
 ## Plugin UI and editors
 
@@ -100,7 +101,7 @@ File extensions, MIME matching and format detection belong to the specific plugi
 - The image zoom focus must stay at the two-finger center; no image switching while zoomed.
 - Video and audio release the old player after switching and save a reasonable resume position.
 - Text load and save go through `TextFileService` to preserve the original encoding and BOM; dirty state, highlighting, indentation and editing interaction stay in the text plugin.
-- Highlighting calculation runs on a background thread, only processes the area near the visible region, and discards stale results via revision/token.
+- Highlighting calculation runs on `Dispatchers.Default`, only processes the area near the visible region, and discards stale results by cancelling the previous `Job` and checking its revision.
 - Tab inserts four spaces; multi-line selection supports unified indentation and Shift+Tab outdent.
 
 ## Desktop and keyboard
@@ -126,7 +127,7 @@ File extensions, MIME matching and format detection belong to the specific plugi
 - Any new hardcoded user copy?
 - Any unnamed time threshold or fixed screen coordinates?
 - Any heavy file or media work on the main thread?
-- Any unclosed Handler, Animator, MediaPlayer or Executor?
+- Any uncancelled `CoroutineScope`/`Job`, or unclosed Handler, Animator, MediaPlayer, or Executor?
 - Do narrow windows, portrait/landscape, font scaling and system Insets behave correctly?
 - Does the menu only show currently valid actions?
 - Do delete, move, paste and undo cover both success and failure paths?

@@ -2,8 +2,6 @@ package com.ane.filemanager.plugin.text.editor
 
 import android.app.Activity
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
@@ -27,14 +25,21 @@ import com.ane.filemanager.plugin.api.ui.applyAneSystemBars
 import com.ane.filemanager.plugin.api.ui.applyAneSystemInsets
 import com.ane.filemanager.plugin.api.ui.configureTextEditor
 import com.ane.filemanager.plugin.api.ui.ui
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
 
 class TextEditorActivity : Activity() {
-    private val handler = Handler(Looper.getMainLooper())
-    private val worker = Executors.newSingleThreadExecutor { task -> Thread(task, "ane-text-worker") }
-    private var highlightFuture: Future<*>? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val highlightDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private var highlightJob: Job? = null
 
     private lateinit var file: File
     private lateinit var pluginFile: PluginFile
@@ -49,28 +54,6 @@ class TextEditorActivity : Activity() {
     private var revision = 0
     private var loaded = false
     private var applyingHighlight = false
-    private var highlightJobToken = 0
-    private val highlightRunnable = Runnable {
-        val (start, end) = visibleTextRange()
-        val source = editor.text.subSequence(start, end).toString()
-        val sourceRevision = revision
-        val token = ++highlightJobToken
-        highlightFuture?.cancel(true)
-        highlightFuture = worker.submit {
-            val ranges = CodeHighlighter.compute(source, file.extension, palette.dark, start)
-            runOnUiThread {
-                if (isFinishing || isDestroyed || token != highlightJobToken || revision != sourceRevision) {
-                    return@runOnUiThread
-                }
-                applyingHighlight = true
-                try {
-                    CodeHighlighter.apply(editor.text, ranges)
-                } finally {
-                    applyingHighlight = false
-                }
-            }
-        }
-    }
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -125,9 +108,7 @@ class TextEditorActivity : Activity() {
             isVerticalScrollBarEnabled = true
             setOnScrollChangeListener { _, _, _, _, _ ->
                 if (!loaded || applyingHighlight) return@setOnScrollChangeListener
-                handler.removeCallbacks(highlightRunnable)
-                highlightJobToken++
-                handler.postDelayed(highlightRunnable, SCROLL_HIGHLIGHT_DEBOUNCE_MS)
+                scheduleHighlight(SCROLL_HIGHLIGHT_DEBOUNCE_MS)
             }
         }
         top.attachTo(root)
@@ -136,27 +117,27 @@ class TextEditorActivity : Activity() {
     }
 
     private fun loadFile() {
-        worker.execute {
-            val result = runCatching { pluginHost.files.readText(pluginFile) }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                result.onSuccess {
-                    encoding = it.encoding
-                    editor.setText(it.text)
-                    editor.setSelection(0)
-                    loaded = true
-                    installWatcher()
-                    updateHeader()
-                    handler.post(highlightRunnable)
-                }.onFailure {
-                    val message = if (it is PluginTextTooLargeException) {
-                        R.string.editor_file_too_large
-                    } else {
-                        R.string.editor_load_failed
-                    }
-                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                    finish()
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { runInterruptible { pluginHost.files.readText(pluginFile) } }
+            }
+            if (isFinishing || isDestroyed) return@launch
+            result.onSuccess {
+                encoding = it.encoding
+                editor.setText(it.text)
+                editor.setSelection(0)
+                loaded = true
+                installWatcher()
+                updateHeader()
+                scheduleHighlight()
+            }.onFailure {
+                val message = if (it is PluginTextTooLargeException) {
+                    R.string.editor_file_too_large
+                } else {
+                    R.string.editor_load_failed
                 }
+                Toast.makeText(this@TextEditorActivity, message, Toast.LENGTH_LONG).show()
+                finish()
             }
         }
     }
@@ -172,16 +153,34 @@ class TextEditorActivity : Activity() {
                     updateHeader()
                 }
                 revision++
-                handler.removeCallbacks(highlightRunnable)
-                highlightJobToken++
                 val delay = if (file.extension.lowercase() in SLOW_HIGHLIGHT_EXTENSIONS) {
                     SLOW_HIGHLIGHT_DEBOUNCE_MS
                 } else {
                     EDIT_HIGHLIGHT_DEBOUNCE_MS
                 }
-                handler.postDelayed(highlightRunnable, delay)
+                scheduleHighlight(delay)
             }
         })
+    }
+
+    private fun scheduleHighlight(delayMs: Long = 0L) {
+        highlightJob?.cancel()
+        highlightJob = scope.launch {
+            if (delayMs > 0) delay(delayMs)
+            val (start, end) = visibleTextRange()
+            val source = editor.text.subSequence(start, end).toString()
+            val sourceRevision = revision
+            val ranges = withContext(highlightDispatcher) {
+                CodeHighlighter.compute(source, file.extension, palette.dark, start)
+            }
+            if (revision != sourceRevision || isFinishing || isDestroyed) return@launch
+            applyingHighlight = true
+            try {
+                CodeHighlighter.apply(editor.text, ranges)
+            } finally {
+                applyingHighlight = false
+            }
+        }
     }
 
     private fun saveFile() {
@@ -189,18 +188,20 @@ class TextEditorActivity : Activity() {
         val text = editor.text.toString()
         val savingRevision = revision
         saveButton.isEnabled = false
-        worker.execute {
-            val result = runCatching { pluginHost.files.writeText(pluginFile, text, encoding) }
-            runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
-                result.onSuccess {
-                    if (revision == savingRevision) dirty = false
-                    Toast.makeText(this, R.string.editor_saved, Toast.LENGTH_SHORT).show()
-                }.onFailure {
-                    Toast.makeText(this, R.string.editor_save_failed, Toast.LENGTH_LONG).show()
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    runInterruptible { pluginHost.files.writeText(pluginFile, text, encoding) }
                 }
-                updateHeader()
             }
+            if (isFinishing || isDestroyed) return@launch
+            result.onSuccess {
+                if (revision == savingRevision) dirty = false
+                Toast.makeText(this@TextEditorActivity, R.string.editor_saved, Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(this@TextEditorActivity, R.string.editor_save_failed, Toast.LENGTH_LONG).show()
+            }
+            updateHeader()
         }
     }
 
@@ -243,10 +244,7 @@ class TextEditorActivity : Activity() {
     override fun onBackPressed() = requestClose()
 
     override fun onDestroy() {
-        handler.removeCallbacks(highlightRunnable)
-        highlightJobToken++
-        highlightFuture?.cancel(true)
-        worker.shutdownNow()
+        scope.cancel()
         if (!isChangingConfigurations) AnePluginHostSessions.release(pluginSessionId)
         super.onDestroy()
     }

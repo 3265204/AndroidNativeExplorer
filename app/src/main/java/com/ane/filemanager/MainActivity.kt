@@ -115,6 +115,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         if (fileInteractionsDelegate.isInitialized()) fileInteractions.close()
+        if (updateControllerDelegate.isInitialized()) updateController.close()
         if (::fileView.isInitialized) fileView.close()
         super.onDestroy()
     }

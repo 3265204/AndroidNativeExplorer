@@ -99,9 +99,9 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 
 1. `FileOps`：底层复制、移动、删除和路径判断。
 2. `FileOperationService`：返回结构化 `FileResult`，把异常转换为 `FileProblem`。
-3. `FileActionController`：连接选择、对话框、后台线程、树形操作历史和 UI 提示。
+3. `FileActionController`：连接选择、对话框、生命周期协程、树形操作历史和 UI 提示。
 
-`FileTransactionService` 是会话内文件执行器、回收 payload 与历史树的唯一所有者。普通 UI、文本插件和插件输出提交共用它的单线程队列，避免形成彼此不可见的修改历史。`FileActionController` 只保留提示、选区和失败交互；事务服务由组合根最后关闭。
+`FileTransactionService` 是会话内文件执行器、回收 payload 与历史树的唯一所有者。普通 UI、文本插件和插件输出提交共用它的单线程队列，避免形成彼此不可见的修改历史；其挂起入口不会占用调用线程，取消调用方只停止结果投递，已入队的文件事务仍安全完成。`FileActionController` 只保留提示、选区和失败交互；事务服务由组合根最后关闭。
 
 删除并非立即销毁：文件会移动到存储根目录下的 `.ane-filemanager-trash`。`FileHistoryController` 保存带父子关系的双向动作；撤回后执行新操作会保留原分支，并可重做到最新子分支或按节点切换分支。记录仍只保存在当前进程会话内，没有固定步数上限；重新启动应用时会清理旧回收内容，因此历史不是跨进程持久化功能。
 

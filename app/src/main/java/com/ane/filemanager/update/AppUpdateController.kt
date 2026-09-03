@@ -15,6 +15,13 @@ import com.ane.filemanager.R
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import com.ane.filemanager.provider.LocalFileProvider
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -28,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Checks GitHub Releases and hands verified APK updates to Android's package installer. */
 internal class AppUpdateController(private val host: MainActivity) {
     private val preferences = host.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val busy = AtomicBoolean(false)
 
     var automaticUpdatesEnabled: Boolean
@@ -62,22 +70,20 @@ internal class AppUpdateController(private val host: MainActivity) {
             return
         }
         if (interactive) host.toast(host.getString(R.string.update_checking))
-        Thread({
-            val result = runCatching { fetchLatestRelease() }
-            host.runOnUiThread {
-                busy.set(false)
-                if (host.isFinishing || host.isDestroyed) return@runOnUiThread
-                result.fold(
-                    onSuccess = { release -> handleRelease(release, interactive) },
-                    onFailure = {
-                        if (interactive) showMessage(
-                            host.getString(R.string.update_check_failed_title),
-                            host.getString(R.string.update_check_failed_message)
-                        )
-                    }
-                )
-            }
-        }, "ane-update-check").start()
+        scope.launch {
+            val result = ioResult(::fetchLatestRelease)
+            busy.set(false)
+            if (host.isFinishing || host.isDestroyed) return@launch
+            result.fold(
+                onSuccess = { release -> handleRelease(release, interactive) },
+                onFailure = {
+                    if (interactive) showMessage(
+                        host.getString(R.string.update_check_failed_title),
+                        host.getString(R.string.update_check_failed_message)
+                    )
+                }
+            )
+        }
     }
 
     private fun handleRelease(release: Release, interactive: Boolean) {
@@ -118,24 +124,35 @@ internal class AppUpdateController(private val host: MainActivity) {
     private fun download(release: Release) {
         if (!busy.compareAndSet(false, true)) return
         host.toast(host.getString(R.string.update_downloading, release.version))
-        Thread({
-            val result = runCatching { downloadApk(release) }
-            host.runOnUiThread {
-                busy.set(false)
-                result.fold(
-                    onSuccess = { apk ->
-                        preferences.edit().putString(KEY_PENDING_APK, apk.absolutePath).apply()
-                        if (!host.isFinishing && !host.isDestroyed) requestInstall(apk)
-                    },
-                    onFailure = {
-                        if (!host.isFinishing && !host.isDestroyed) showMessage(
-                            host.getString(R.string.update_download_failed_title),
-                            host.getString(R.string.update_download_failed_message)
-                        )
-                    }
-                )
-            }
-        }, "ane-update-download").start()
+        scope.launch {
+            val result = ioResult { downloadApk(release) }
+            busy.set(false)
+            result.fold(
+                onSuccess = { apk ->
+                    preferences.edit().putString(KEY_PENDING_APK, apk.absolutePath).apply()
+                    if (!host.isFinishing && !host.isDestroyed) requestInstall(apk)
+                },
+                onFailure = {
+                    if (!host.isFinishing && !host.isDestroyed) showMessage(
+                        host.getString(R.string.update_download_failed_title),
+                        host.getString(R.string.update_download_failed_message)
+                    )
+                }
+            )
+        }
+    }
+
+    fun close() {
+        scope.cancel()
+        busy.set(false)
+    }
+
+    private suspend fun <T> ioResult(block: () -> T): Result<T> = try {
+        Result.success(runInterruptible(Dispatchers.IO, block))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Throwable) {
+        Result.failure(error)
     }
 
     private fun fetchLatestRelease(): Release {
@@ -179,18 +196,26 @@ internal class AppUpdateController(private val host: MainActivity) {
         val temporary = File(directory, "ane-update.apk.part")
         val destination = File(directory, "ane-update-${safeVersion(release.version)}.apk")
         directory.listFiles()?.filter { it != temporary && it != destination }?.forEach(File::delete)
-        val connection = openConnection(release.apkUrl, APK_MIME)
-        connection.useResponse { input ->
-            BufferedInputStream(input).use { source ->
-                BufferedOutputStream(temporary.outputStream()).use { target -> source.copyTo(target) }
+        var destinationWritten = false
+        try {
+            val connection = openConnection(release.apkUrl, APK_MIME)
+            connection.useResponse { input ->
+                BufferedInputStream(input).use { source ->
+                    BufferedOutputStream(temporary.outputStream()).use { target -> source.copyTo(target) }
+                }
             }
-        }
-        if (!temporary.renameTo(destination)) {
-            temporary.copyTo(destination, overwrite = true)
+            if (!temporary.renameTo(destination)) {
+                temporary.copyTo(destination, overwrite = true)
+                temporary.delete()
+            }
+            destinationWritten = true
+            validateApk(destination)
+            return destination
+        } catch (error: Throwable) {
             temporary.delete()
+            if (destinationWritten && destination.exists()) destination.delete()
+            throw error
         }
-        validateApk(destination)
-        return destination
     }
 
     @Suppress("DEPRECATION")
