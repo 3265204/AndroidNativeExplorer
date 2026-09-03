@@ -65,6 +65,7 @@ internal data class RenderState(
     val dockScrollX: Float,
     val dockEditing: Boolean,
     val appearance: AppearanceSettings,
+    val dragReady: Boolean,
     val dragging: Boolean,
     val tabDragging: Boolean,
     val draggedTabIndex: Int,

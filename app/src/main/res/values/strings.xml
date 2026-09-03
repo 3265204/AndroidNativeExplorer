@@ -176,7 +176,6 @@
     <string name="verb_copy">复制</string>
     <string name="verb_cut">剪切</string>
     <string name="clipboard_missing">剪贴板内容已不存在</string>
-    <string name="drag_no_target">未选择移动目标</string>
     <string name="drag_cancelled">已取消移动</string>
     <string name="drag_release_to_cancel">松开以取消移动</string>
 

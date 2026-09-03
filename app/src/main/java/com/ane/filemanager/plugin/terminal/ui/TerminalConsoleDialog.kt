@@ -1,5 +1,6 @@
 package com.ane.filemanager.plugin.terminal.ui
 
+import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
@@ -69,7 +70,14 @@ internal class TerminalConsoleDialog(
         val textSp = terminalPreferences()
             .getInt(PREFERENCE_FONT_SP, AneTypography.terminalTextSp(activity))
             .coerceIn(10, 22)
-        return TerminalView(activity, ui.theme, input, textSp)
+        return TerminalView(
+            context = activity,
+            palette = ui.theme,
+            input = input,
+            initialTextSizeSp = textSp,
+            copySelection = ::copySelection,
+            paste = ::paste
+        )
     }
 
     private fun adjustFont(delta: Int) {
@@ -90,11 +98,19 @@ internal class TerminalConsoleDialog(
         terminalView.requestFocus()
     }
 
+    private fun copySelection(value: String) {
+        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText(TERMINAL_CLIP_LABEL, value))
+        host.toast(activity.getString(R.string.terminal_copied))
+        terminalView.requestFocus()
+    }
+
     private fun terminalPreferences() =
         activity.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     private companion object {
         const val PREFERENCES_NAME = "ane-terminal"
         const val PREFERENCE_FONT_SP = "font-sp"
+        const val TERMINAL_CLIP_LABEL = "ANE terminal"
     }
 }

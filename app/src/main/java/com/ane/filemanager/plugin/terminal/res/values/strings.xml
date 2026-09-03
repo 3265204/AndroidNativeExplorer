@@ -8,6 +8,9 @@
     <string name="terminal_control_c" translatable="false">Ctrl+C</string>
     <string name="terminal_control_d" translatable="false">Ctrl+D</string>
     <string name="terminal_paste">粘贴</string>
+    <string name="terminal_copy">复制</string>
+    <string name="terminal_select_all">全选</string>
+    <string name="terminal_copied">已复制终端内容</string>
     <string name="terminal_shell_closed">Shell 会话已结束</string>
     <string name="terminal_unavailable">无法启动 PTY 终端</string>
     <string name="terminal_api_upgrade_required">此插件需要支持插件 API v3 的新版 ANE。</string>

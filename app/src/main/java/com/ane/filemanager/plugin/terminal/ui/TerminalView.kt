@@ -4,27 +4,42 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.util.TypedValue
+import android.view.ActionMode
+import android.view.HapticFeedbackConstants
+import android.view.InputDevice
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import com.ane.filemanager.R
 import com.ane.filemanager.plugin.terminal.TerminalEmulator
 import com.ane.filemanager.plugin.api.input.AnePluginInput
 import com.ane.filemanager.plugin.api.ui.AneTheme
+import com.ane.filemanager.ui.motion.GestureTiming
+import kotlin.math.abs
 import kotlin.math.floor
+import kotlin.math.max
 
 @SuppressLint("ViewConstructor")
 internal class TerminalView(
     context: Context,
     private val palette: AneTheme,
     private val input: AnePluginInput,
-    initialTextSizeSp: Int
+    initialTextSizeSp: Int,
+    private val copySelection: (String) -> Unit,
+    private val paste: () -> Unit
 ) : View(context) {
     private var writer: (ByteArray) -> Unit = {}
     private var resizeListener: (Int, Int) -> Unit = { _, _ -> }
@@ -39,9 +54,24 @@ internal class TerminalView(
     private var lineHeight = 1f
     private var baselineOffset = 1f
     private var scrollOffset = 0
+    private val gestureHandler = Handler(Looper.getMainLooper())
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var touchStartX = 0f
     private var touchStartY = 0f
     private var touchStartScroll = 0
+    private var touchMoved = false
+    private var longPressTriggered = false
+    private var mouseSelecting = false
+    private var mouseSelectionAnchor: TerminalTextPosition? = null
+    private var lastSecondaryClickTime = 0L
+    private var lastSecondaryClickX = 0f
+    private var lastSecondaryClickY = 0f
+    private var actionAnchorX = 0f
+    private var actionAnchorY = 0f
+    private var textSelection: TerminalTextSelection? = null
+    private var selectionActionMode: ActionMode? = null
     private var composingText = ""
+    private val longPressRunnable = Runnable(::showLongPressActions)
 
     val currentRows: Int
         get() = emulator.rows
@@ -67,6 +97,7 @@ internal class TerminalView(
     }
 
     fun feed(bytes: ByteArray) {
+        clearSelectionActions()
         emulator.feed(bytes)
         if (scrollOffset == 0) postInvalidate() else {
             val maximum = emulator.snapshot(scrollOffset).maximumScrollOffset
@@ -137,6 +168,17 @@ internal class TerminalView(
                         paint
                     )
                 }
+                if (textSelection?.contains(row, column) == true) {
+                    paint.color = palette.selected
+                    paint.style = Paint.Style.FILL
+                    canvas.drawRect(
+                        left,
+                        top,
+                        left + cell.width.coerceAtLeast(1) * cellWidth,
+                        top + lineHeight,
+                        paint
+                    )
+                }
                 if (cell.flags and TerminalEmulator.FLAG_HIDDEN != 0 || cell.text.isBlank()) {
                     return@forEachIndexed
                 }
@@ -181,28 +223,242 @@ internal class TerminalView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (handleSecondaryMousePress(event)) return true
+        if (event.isFromSource(InputDevice.SOURCE_MOUSE)) return onMouseTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                clearSelectionActions()
+                touchStartX = event.x
                 touchStartY = event.y
                 touchStartScroll = scrollOffset
+                touchMoved = false
+                longPressTriggered = false
+                gestureHandler.postDelayed(
+                    longPressRunnable,
+                    ViewConfiguration.getLongPressTimeout().toLong()
+                )
                 parent?.requestDisallowInterceptTouchEvent(true)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                val lines = ((event.y - touchStartY) / lineHeight).toInt()
-                val maximum = emulator.snapshot(scrollOffset).maximumScrollOffset
-                scrollOffset = (touchStartScroll + lines).coerceIn(0, maximum)
+                val distance = max(abs(event.x - touchStartX), abs(event.y - touchStartY))
+                if (!longPressTriggered && distance > touchSlop) {
+                    touchMoved = true
+                    gestureHandler.removeCallbacks(longPressRunnable)
+                }
+                if (longPressTriggered && distance > touchSlop) {
+                    touchMoved = true
+                    textSelection = textSelection?.withFocus(positionAt(event.x, event.y))
+                    selectionActionMode?.invalidate()
+                    selectionActionMode?.invalidateContentRect()
+                } else if (touchMoved) {
+                    val lines = ((event.y - touchStartY) / lineHeight).toInt()
+                    val maximum = emulator.snapshot(scrollOffset).maximumScrollOffset
+                    scrollOffset = (touchStartScroll + lines).coerceIn(0, maximum)
+                }
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                if (kotlin.math.abs(event.y - touchStartY) < dp(8).toFloat()) showKeyboard()
-                performClick()
+                gestureHandler.removeCallbacks(longPressRunnable)
+                if (!touchMoved && !longPressTriggered) {
+                    showKeyboard()
+                    performClick()
+                }
                 return true
             }
-            MotionEvent.ACTION_CANCEL -> return true
+            MotionEvent.ACTION_CANCEL -> {
+                gestureHandler.removeCallbacks(longPressRunnable)
+                return true
+            }
         }
         return super.onTouchEvent(event)
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if (handleSecondaryMousePress(event)) return true
+        if (event.isFromSource(InputDevice.SOURCE_MOUSE) &&
+            event.actionMasked == MotionEvent.ACTION_SCROLL
+        ) {
+            val lines = (event.getAxisValue(MotionEvent.AXIS_VSCROLL) *
+                MOUSE_SCROLL_LINES_PER_NOTCH).toInt()
+            if (lines != 0) {
+                clearSelectionActions()
+                val maximum = emulator.snapshot(scrollOffset).maximumScrollOffset
+                scrollOffset = (scrollOffset + lines).coerceIn(0, maximum)
+                invalidate()
+            }
+            return true
+        }
+        return super.onGenericMotionEvent(event)
+    }
+
+    private fun onMouseTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                requestFocus()
+                clearSelectionActions()
+                touchStartX = event.x
+                touchStartY = event.y
+                touchMoved = false
+                mouseSelecting = true
+                mouseSelectionAnchor = positionAt(event.x, event.y)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!mouseSelecting) return true
+                val distance = max(abs(event.x - touchStartX), abs(event.y - touchStartY))
+                if (distance > touchSlop) {
+                    touchMoved = true
+                    val anchor = mouseSelectionAnchor ?: positionAt(touchStartX, touchStartY)
+                    textSelection = TerminalTextSelection(anchor, positionAt(event.x, event.y))
+                    invalidate()
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (mouseSelecting && !touchMoved) textSelection = null
+                mouseSelecting = false
+                mouseSelectionAnchor = null
+                invalidate()
+                return true
+            }
+        }
+        return true
+    }
+
+    private fun handleSecondaryMousePress(event: MotionEvent): Boolean {
+        if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
+        val secondaryPress = when (event.actionMasked) {
+            MotionEvent.ACTION_BUTTON_PRESS -> event.actionButton == MotionEvent.BUTTON_SECONDARY
+            MotionEvent.ACTION_DOWN -> event.buttonState and MotionEvent.BUTTON_SECONDARY != 0
+            else -> false
+        }
+        if (!secondaryPress) return false
+
+        val duplicate = event.eventTime - lastSecondaryClickTime <
+            GestureTiming.SECONDARY_CLICK_DEDUP_TIMEOUT_MS &&
+            max(abs(event.x - lastSecondaryClickX), abs(event.y - lastSecondaryClickY)) < touchSlop
+        if (!duplicate) {
+            lastSecondaryClickTime = event.eventTime
+            lastSecondaryClickX = event.x
+            lastSecondaryClickY = event.y
+            requestFocus()
+            gestureHandler.removeCallbacks(longPressRunnable)
+            actionAnchorX = event.x
+            actionAnchorY = event.y
+            if (selectionActionMode == null) {
+                selectionActionMode = startActionMode(
+                    selectionActionCallback,
+                    ActionMode.TYPE_FLOATING
+                )
+            } else {
+                selectionActionMode?.invalidate()
+                selectionActionMode?.invalidateContentRect()
+            }
+        }
+        return true
+    }
+
+    private fun showLongPressActions() {
+        if (touchMoved || !isAttachedToWindow) return
+        longPressTriggered = true
+        actionAnchorX = touchStartX
+        actionAnchorY = touchStartY
+        val snapshot = emulator.snapshot(scrollOffset)
+        textSelection = TerminalSelectionText.wordAt(
+            snapshot.lines,
+            positionAt(touchStartX, touchStartY)
+        )
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        selectionActionMode = startActionMode(selectionActionCallback, ActionMode.TYPE_FLOATING)
+        invalidate()
+    }
+
+    private fun positionAt(x: Float, y: Float): TerminalTextPosition {
+        val row = floor((y - paddingTop) / lineHeight).toInt().coerceIn(0, emulator.rows - 1)
+        val column = floor((x - paddingLeft) / cellWidth).toInt().coerceIn(0, emulator.columns - 1)
+        return TerminalTextPosition(row, column)
+    }
+
+    private val selectionActionCallback = object : ActionMode.Callback2() {
+        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            menu.add(Menu.NONE, ACTION_COPY, 0, context.getString(R.string.terminal_copy))
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+            menu.add(Menu.NONE, ACTION_SELECT_ALL, 1, context.getString(R.string.terminal_select_all))
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+            menu.add(Menu.NONE, ACTION_PASTE, 2, context.getString(R.string.terminal_paste))
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+            return true
+        }
+
+        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+            val hasSelection = textSelection != null
+            menu.findItem(ACTION_COPY)?.isVisible = hasSelection
+            menu.findItem(ACTION_SELECT_ALL)?.isVisible =
+                TerminalSelectionText.all(emulator.snapshot(scrollOffset).lines) != null
+            return true
+        }
+
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            when (item.itemId) {
+                ACTION_COPY -> {
+                    val snapshot = emulator.snapshot(scrollOffset)
+                    val value = textSelection?.let { TerminalSelectionText.extract(snapshot.lines, it) }
+                    if (!value.isNullOrEmpty()) copySelection(value)
+                    mode.finish()
+                }
+                ACTION_SELECT_ALL -> {
+                    textSelection = TerminalSelectionText.all(emulator.snapshot(scrollOffset).lines)
+                    mode.invalidate()
+                    mode.invalidateContentRect()
+                    invalidate()
+                }
+                ACTION_PASTE -> {
+                    paste()
+                    mode.finish()
+                }
+                else -> return false
+            }
+            return true
+        }
+
+        override fun onDestroyActionMode(mode: ActionMode) {
+            if (selectionActionMode === mode) selectionActionMode = null
+            invalidate()
+        }
+
+        override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+            val selection = textSelection
+            if (selection == null) {
+                val half = dp(1)
+                outRect.set(
+                    (actionAnchorX - half).toInt(),
+                    (actionAnchorY - half).toInt(),
+                    (actionAnchorX + half).toInt(),
+                    (actionAnchorY + half).toInt()
+                )
+                return
+            }
+            outRect.set(
+                (paddingLeft + selection.start.column * cellWidth).toInt(),
+                (paddingTop + selection.start.row * lineHeight).toInt(),
+                (paddingLeft + (selection.end.column + 1) * cellWidth).toInt(),
+                (paddingTop + (selection.end.row + 1) * lineHeight).toInt()
+            )
+        }
+    }
+
+    private fun clearSelectionActions() {
+        gestureHandler.removeCallbacks(longPressRunnable)
+        selectionActionMode?.finish()
+        selectionActionMode = null
+        textSelection = null
+    }
+
+    override fun onDetachedFromWindow() {
+        clearSelectionActions()
+        super.onDetachedFromWindow()
     }
 
     override fun performClick(): Boolean {
@@ -310,6 +566,10 @@ internal class TerminalView(
     private fun dp(value: Float) = (value * resources.displayMetrics.density + .5f).toInt()
 
     private companion object {
+        const val ACTION_COPY = 1
+        const val ACTION_SELECT_ALL = 2
+        const val ACTION_PASTE = 3
+        const val MOUSE_SCROLL_LINES_PER_NOTCH = 3f
         const val MIN_TEXT_SP = 10
         const val MAX_TEXT_SP = 22
         const val CELL_WIDTH_SAMPLE = "0"

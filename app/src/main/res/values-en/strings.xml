@@ -172,7 +172,6 @@
     <string name="verb_copy">Copied</string>
     <string name="verb_cut">Cut</string>
     <string name="clipboard_missing">Clipboard items no longer exist</string>
-    <string name="drag_no_target">No move destination selected</string>
     <string name="drag_cancelled">Move cancelled</string>
     <string name="drag_release_to_cancel">Release to cancel move</string>
 

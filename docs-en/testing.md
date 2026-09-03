@@ -73,10 +73,13 @@ The MuMu ADB address depends on local configuration; the common current example 
 - Single click selects; a second click within the system double-click time opens.
 - In multi-select mode a single click only toggles selection, not open.
 - Drag-select and ordinary vertical scrolling do not misfire against each other.
-- Long-press reaching the system threshold gives vibration and visual feedback.
-- Releasing in place after long-press shows the menu; moving beyond the system touch slop enters dragging.
+- Movement during the first 400ms after pressing a file or tab is ordinary scrolling. At 400ms, selection, haptic and drag-ready feedback appear; moving between 400ms and 800ms starts dragging, while releasing in that window only keeps the selection. Remaining stationary opens the menu at 800ms.
+- The multi-select corner handle keeps its original behavior: movement beyond system touch slop before long press cancels the timer and immediately starts continuous selection. One gesture only adds or only removes, and a new gesture after release may reverse direction. Holding the handle still follows the ordinary file long-press flow.
+- Releasing in place after the menu appears does not activate an item; continued movement neither closes the menu nor turns the gesture into a drag.
 - Long-pressing a single file can share; when the selection is all files you can share multiple at once, and when the selection contains a folder the share entry is hidden.
 - Mouse right-click does not open the menu twice due to DeX duplicate events.
+- Once a file is selected with a mouse, pressing it again and moving immediately starts a drag. A direct touch swipe over a selected file still scrolls the list; touch dragging starts only by moving after a successful long-press.
+- Releasing a drag without hitting a valid directory or tab simply ends the gesture without a "no target" message.
 - Desktop shortcuts and address input do not steal from each other.
 
 ### Tab bar
@@ -155,6 +158,8 @@ Each time check tab order, pinned state, temporary tabs, active directory and hi
 After passing the emulator, verify on at least one physical device:
 
 - Finger long-press and vibration feedback.
+- In the terminal, long-pressing text allows drag selection and copy; long-pressing blank space offers paste without typing on release.
+- In the terminal, dragging with the primary mouse button selects text while the wheel handles scrollback; right-click only opens the action menu and preserves the selection until the user chooses Copy or starts another action.
 - Swipe inertia and two-finger zoom.
 - System font scaling and display scaling.
 - Portrait/landscape, split-screen and free-window sizes.

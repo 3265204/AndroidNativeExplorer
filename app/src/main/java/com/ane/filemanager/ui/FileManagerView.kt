@@ -130,6 +130,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private var scrolling = false
     private var dockScrolling = false
     private var longTriggered = false
+    private var longPressMenuShown = false
     private var dragging = false
     private var tabDragging = false
     private var draggedTab: BrowserTab? = null
@@ -138,9 +139,11 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private var dragY = 0f
     private var slideSelecting = false
     private var slideCandidateFile: File? = null
+    private var directMouseDragCandidate = false
     private var lastSecondaryClickTime = 0L
     private var lastSecondaryClickX = 0f
     private var lastSecondaryClickY = 0f
+    private val longPressMenuRunnable = Runnable(::showLongPressMenu)
     private val longPressRunnable = Runnable {
         if (!moved && (downFile != null || downTab >= 0)) {
             longTriggered = true
@@ -160,8 +163,23 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
                 }
             }
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            handler.postDelayed(
+                longPressMenuRunnable,
+                GestureTiming.DRAG_DECISION_WINDOW_MS
+            )
             invalidate()
         }
+    }
+
+    private fun showLongPressMenu() {
+        if (!longTriggered || moved || menu.kind != MenuKind.NONE) return
+        val tabIndex = draggedTab?.let(tabs::indexOf)?.takeIf { it in tabs.indices }
+        when {
+            tabIndex != null -> menus.beginTabEdit(tabIndex, downX, downY)
+            downFile != null -> menus.showFile(downFile!!, downX, downY)
+            else -> return
+        }
+        longPressMenuShown = true
     }
 
     private val contentLeft get() = systemInsets.left.toFloat()
@@ -320,6 +338,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             dockScrollX = dockScrollX,
             dockEditing = dockEditing,
             appearance = appearance.snapshot(),
+            dragReady = longTriggered && !longPressMenuShown && !dragging && downFile != null,
             dragging = dragging,
             tabDragging = tabDragging,
             draggedTabIndex = draggedTab?.let(tabs::indexOf) ?: -1,
@@ -382,7 +401,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
                 requestFocus()
                 inertialScroll.onDown(event)
                 dockInertialScroll.onDown(event)
-                onDown(event.x, event.y)
+                onDown(event.x, event.y, event.isMousePointer())
             }
             MotionEvent.ACTION_MOVE -> {
                 inertialScroll.onMove(event)
@@ -442,12 +461,14 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         return true
     }
 
-    private fun onDown(x: Float, y: Float) {
+    private fun onDown(x: Float, y: Float, fromMouse: Boolean) {
         downX = x; downY = y; lastX = x; lastY = y; dragX = x; dragY = y
         moved = false; scrolling = false; dockScrolling = false
-        longTriggered = false; dragging = false; tabDragging = false
+        longTriggered = false; longPressMenuShown = false
+        dragging = false; tabDragging = false
         draggedTab = null; dragCancelHover = false; slideSelecting = false
         slideCandidateFile = null
+        directMouseDragCandidate = false
         downCloseTab = null
         downMenuAction = if (menu.kind != MenuKind.NONE) {
             renderer.menuHits.lastOrNull { it.rect.contains(x, y) }?.action
@@ -480,16 +501,24 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         // A selection handle is only a slide-selection candidate until the pointer moves.
         // Keeping the long-press timer alive restores folder dragging from the same area.
         slideCandidateFile = if (inDock) null else renderer.selectionHandleFile(x, y)
+        directMouseDragCandidate = menu.kind == MenuKind.NONE && !dockEditing && fromMouse &&
+            slideCandidateFile == null && downFile?.let(selection::contains) == true
         if (menu.kind == MenuKind.NONE && !dockEditing && (downFile != null || downTab >= 0)) {
-            handler.postDelayed(longPressRunnable, GestureTiming.longPressTimeoutMs)
+            handler.postDelayed(longPressRunnable, GestureTiming.DRAG_READY_TIMEOUT_MS)
         }
     }
 
     private fun onMove(x: Float, y: Float) {
         dragX = x; dragY = y
         val distance = max(abs(x - downX), abs(y - downY))
-        if (longTriggered && distance > touchSlop) {
+        if (!longTriggered && directMouseDragCandidate && distance > touchSlop) {
             moved = true
+            dragging = true
+            handler.removeCallbacks(longPressRunnable)
+            updateDragCancelFeedback(x, y)
+        } else if (longTriggered && !longPressMenuShown && distance > touchSlop) {
+            moved = true
+            handler.removeCallbacks(longPressMenuRunnable)
             when {
                 draggedTab != null -> {
                     val source = tabs.indexOf(draggedTab)
@@ -531,6 +560,12 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
 
     private fun onUp(x: Float, y: Float) {
         handler.removeCallbacks(longPressRunnable)
+        handler.removeCallbacks(longPressMenuRunnable)
+        if (longTriggered) {
+            if (dragging) finishDrag(x, y)
+            resetGesture()
+            return
+        }
         if (menu.kind != MenuKind.NONE) {
             val dismissedKind = menu.kind
             val releasedAction = renderer.menuHits.lastOrNull { it.rect.contains(x, y) }?.action
@@ -576,8 +611,6 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             dragging -> finishDrag(x, y)
             tabDragging -> Unit
             slideSelecting -> Unit
-            longTriggered && downFile != null -> menus.showFile(downFile!!, x, y)
-            longTriggered && downTab >= 0 && !moved -> menus.beginTabEdit(downTab, x, y)
             !moved && y in topBarTop..topBarBottom && x < contentLeft + renderer.appMenuHitWidth ->
                 menus.showApp(topBarTop, topBarBottom, contentLeft)
             !moved && y in topBarTop..topBarBottom && x < contentLeft + renderer.navigateUpHitWidth -> navigateUp()
@@ -619,13 +652,25 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
 
     private fun resetGesture() {
         handler.removeCallbacks(longPressRunnable)
+        handler.removeCallbacks(longPressMenuRunnable)
         downFile = null; downTab = -1; downCloseTab = null; downMenuAction = null
         moved = false; scrolling = false; dockScrolling = false
-        longTriggered = false; dragging = false; tabDragging = false
+        longTriggered = false; longPressMenuShown = false
+        dragging = false; tabDragging = false
         draggedTab = null; dragCancelHover = false
-        slideSelecting = false; slideCandidateFile = null; selection.endSlide()
+        slideSelecting = false; slideCandidateFile = null; directMouseDragCandidate = false
+        selection.endSlide()
         invalidate()
     }
+
+    private fun MotionEvent.isMousePointer(): Boolean =
+        isFromSource(InputDevice.SOURCE_MOUSE) ||
+            pointerCount > 0 && getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE ||
+            buttonState and (
+                MotionEvent.BUTTON_PRIMARY or
+                    MotionEvent.BUTTON_SECONDARY or
+                    MotionEvent.BUTTON_TERTIARY
+                ) != 0
 
     private fun reorderDraggedTab(x: Float) {
         autoScrollDockDuringTabDrag(x)
@@ -874,7 +919,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             else -> null
         }
         val sources = selection.dragFiles(downFile)
-        if (target == null) { host.toast(s(R.string.drag_no_target)); return }
+        if (target == null) return
         fileActions.move(sources, target)
     }
 

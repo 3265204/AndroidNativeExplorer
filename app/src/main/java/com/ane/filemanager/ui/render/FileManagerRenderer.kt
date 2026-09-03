@@ -167,7 +167,7 @@ internal class FileManagerRenderer(
         drawTopBar(canvas)
         drawFiles(canvas)
         drawTabs(canvas)
-        if (state.dragging) drawDragPreview(canvas)
+        if (state.dragReady || state.dragging) drawDragPreview(canvas)
         drawFab(canvas)
         if (state.menuKind != MenuKind.NONE) drawMenu(canvas) else menuHits.clear()
         state.busyText?.let { drawBusy(canvas, it) }
@@ -958,9 +958,13 @@ internal class FileManagerRenderer(
         canvas.save()
         canvas.clipRect(contentLeft, topBarBottom, contentRight,
             contentBottom(height, state.insets.bottom))
-        fileHits.firstOrNull { metadata(it.file).directory && it.rect.contains(state.dragX, state.dragY) }?.let {
-            stroke.color = color("primary"); stroke.strokeWidth = dp(3f)
-            canvas.drawRoundRect(it.rect, dp(10f), dp(10f), stroke)
+        if (state.dragging) {
+            fileHits.firstOrNull {
+                metadata(it.file).directory && it.rect.contains(state.dragX, state.dragY)
+            }?.let {
+                stroke.color = color("primary"); stroke.strokeWidth = dp(3f)
+                canvas.drawRoundRect(it.rect, dp(10f), dp(10f), stroke)
+            }
         }
         canvas.restore()
         paint.color = 0xD92972D2.toInt()

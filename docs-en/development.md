@@ -56,7 +56,7 @@ File extensions, MIME matching and format detection belong to the specific plugi
 - Drag distances use `scaledTouchSlop`.
 - Device compatibility de-duplication, animation durations and debounce intervals must use semantic constants; do not scatter bare millisecond values across business branches.
 - In multi-select mode a single click toggles selection once; a double-click equals two toggles and must not open a file.
-- After a successful long-press, provide vibration or clear visual feedback so the user knows they can release or begin dragging.
+- The first 400ms after pressing a file or tab are reserved for ordinary scrolling. At 400ms, selection, haptic and drag-ready feedback appear; movement between 400ms and 800ms starts dragging, while releasing in that window only keeps the selection. A stationary press opens the menu at 800ms. The multi-select corner handle keeps its original behavior: movement beyond system touch slop cancels long press and immediately starts continuous selection, with either add or remove polarity fixed for that gesture; a new gesture after release may reverse it. Holding the handle still follows the ordinary file long-press flow. Once shown, the menu is locked as menu interaction and must not turn into a drag.
 
 ## Copy and i18n
 
