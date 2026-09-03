@@ -7,6 +7,9 @@
     <string name="pictures">Pictures</string>
     <string name="tab_number">Tab %1$d</string>
 
+    <string name="tutorial_layout_title">Choose a view</string>
+    <string name="tutorial_layout_description">Choose how files should appear and preview it behind this panel. The app will keep it after confirmation.</string>
+    <string name="tutorial_next">Next</string>
     <string name="tutorial_select_title">Tap to select</string>
     <string name="tutorial_open_title">Double-tap to open</string>
     <string name="tutorial_dock_drag_title">Drag to a Dock folder</string>

@@ -8,6 +8,9 @@
     <string name="pictures">图片</string>
     <string name="tab_number">标签 %1$d</string>
 
+    <string name="tutorial_layout_title">选择显示模式</string>
+    <string name="tutorial_layout_description">选择你习惯的文件显示方式，可在后方实时预览。确认后将一直沿用此模式。</string>
+    <string name="tutorial_next">下一步</string>
     <string name="tutorial_select_title">单击选择</string>
     <string name="tutorial_open_title">双击打开</string>
     <string name="tutorial_dock_drag_title">拖到 Dock 目录</string>

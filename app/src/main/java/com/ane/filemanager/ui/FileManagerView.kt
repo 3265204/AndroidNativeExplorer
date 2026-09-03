@@ -25,6 +25,7 @@ import com.ane.filemanager.ui.directory.DirectoryLoader
 import com.ane.filemanager.ui.menu.FileMenuController
 import com.ane.filemanager.ui.menu.FileMenuCoordinator
 import com.ane.filemanager.ui.model.MenuKind
+import com.ane.filemanager.ui.model.LayoutMode
 import com.ane.filemanager.ui.model.RenderState
 import com.ane.filemanager.ui.model.UiInsets
 import com.ane.filemanager.ui.motion.GestureTiming
@@ -244,6 +245,21 @@ internal class FileManagerView(
 
     fun pickerDirectory(): File = currentDirectory
 
+    internal fun chooseOnboardingLayout(mode: LayoutMode) {
+        appearance.previewLayoutMode(mode)
+        onboarding.selectLayout(mode)
+        renderer.onDirectoryContentsChanged()
+        scrollY = 0f
+        invalidate()
+    }
+
+    internal fun confirmOnboardingLayout() {
+        val selected = onboarding.selectedLayout ?: return
+        if (!onboarding.confirmLayout()) return
+        appearance.setLayoutMode(selected)
+        invalidate()
+    }
+
     private fun persistDock() {
         if (onboardingWorkspace == null && ::dock.isInitialized) dockStore.save(tabs, activeTab)
     }
@@ -345,6 +361,7 @@ internal class FileManagerView(
             canvas,
             onboardingTarget(),
             onboardingSecondaryTarget(),
+            renderer.fileHits.filter { it.file.isDirectory }.map { RectF(it.rect) },
             gestures.dragging,
             gestures.longTriggered
         )
@@ -353,6 +370,7 @@ internal class FileManagerView(
     internal fun onboardingTarget(): RectF? {
         if (!onboarding.active) return null
         return when (onboarding.step) {
+            Step.LAYOUT -> null
             Step.SELECT, Step.MOVE_TO_DOCK, Step.LONG_PRESS_MENU, Step.OPEN ->
                 renderer.fileHits.firstOrNull {
                 it.file.absolutePath == onboarding.targetPath
@@ -384,6 +402,7 @@ internal class FileManagerView(
     }
 
     private fun onboardingTargetTabIndex(): Int? = when (onboarding.step) {
+        Step.LAYOUT -> null
         Step.MOVE_TO_DOCK, Step.OPEN_MOVE_DESTINATION ->
             onboarding.workspace?.moveTarget?.let(::tabIndexForDirectory)
         Step.OPEN_COPY_DESTINATION -> onboarding.workspace?.copyTarget?.let(::tabIndexForDirectory)

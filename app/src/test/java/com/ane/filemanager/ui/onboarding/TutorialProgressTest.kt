@@ -11,6 +11,8 @@ class TutorialProgressTest {
     @Test fun `virtual file workflow advances in the required order`() {
         val progress = TutorialProgress()
 
+        assertEquals(Step.LAYOUT, progress.step)
+        assertTrue(progress.accept(Action.CHOOSE_LAYOUT))
         assertEquals(Step.SELECT, progress.step)
         assertTrue(progress.accept(Action.TAP_ITEM))
         assertEquals(Step.MOVE_TO_DOCK, progress.step)
@@ -41,11 +43,12 @@ class TutorialProgressTest {
         assertFalse(progress.accept(Action.COPY))
         assertFalse(progress.accept(Action.PASTE))
         assertFalse(progress.accept(Action.SWITCH_TAB))
-        assertEquals(Step.SELECT, progress.step)
+        assertEquals(Step.LAYOUT, progress.step)
     }
 
     @Test fun `copy requires the moved file long press menu first`() {
         val progress = TutorialProgress()
+        progress.accept(Action.CHOOSE_LAYOUT)
         progress.accept(Action.TAP_ITEM)
         progress.accept(Action.MOVE_TO_DOCK)
         progress.accept(Action.SWITCH_TO_MOVED_FILE)
@@ -55,6 +58,15 @@ class TutorialProgressTest {
         progress.accept(Action.LONG_PRESS_MENU)
         assertTrue(progress.accept(Action.COPY))
         assertEquals(Step.OPEN_COPY_DESTINATION, progress.step)
+    }
+
+    @Test fun `file practice cannot begin until a layout is chosen`() {
+        val progress = TutorialProgress()
+
+        assertFalse(progress.accept(Action.TAP_ITEM))
+        assertEquals(Step.LAYOUT, progress.step)
+        assertTrue(progress.accept(Action.CHOOSE_LAYOUT))
+        assertEquals(Step.SELECT, progress.step)
     }
 
 }

@@ -3,6 +3,7 @@ package com.ane.filemanager.ui.onboarding
 /** Small, platform-free state machine so the mandatory practice flow is easy to verify. */
 internal class TutorialProgress {
     enum class Step {
+        LAYOUT,
         SELECT,
         MOVE_TO_DOCK,
         OPEN_MOVE_DESTINATION,
@@ -16,6 +17,7 @@ internal class TutorialProgress {
         COMPLETE
     }
     enum class Action {
+        CHOOSE_LAYOUT,
         TAP_ITEM,
         MOVE_TO_DOCK,
         SWITCH_TO_MOVED_FILE,
@@ -28,12 +30,13 @@ internal class TutorialProgress {
         SWITCH_TAB
     }
 
-    var step: Step = Step.SELECT
+    var step: Step = Step.LAYOUT
         private set
 
     fun accept(action: Action): Boolean {
         val previousStep = step
         when (step) {
+            Step.LAYOUT -> if (action == Action.CHOOSE_LAYOUT) step = Step.SELECT
             Step.SELECT -> if (action == Action.TAP_ITEM) step = Step.MOVE_TO_DOCK
             Step.MOVE_TO_DOCK -> if (action == Action.MOVE_TO_DOCK) step = Step.OPEN_MOVE_DESTINATION
             Step.OPEN_MOVE_DESTINATION -> if (action == Action.SWITCH_TO_MOVED_FILE) step = Step.LONG_PRESS_MENU

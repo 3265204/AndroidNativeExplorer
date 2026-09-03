@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import com.ane.filemanager.navigation.BrowserTab
 import com.ane.filemanager.ui.model.MenuAction
 import com.ane.filemanager.ui.model.MenuKind
+import com.ane.filemanager.ui.model.LayoutMode
 import com.ane.filemanager.ui.motion.GestureTiming
 import com.ane.filemanager.ui.onboarding.TutorialProgress.Step
 import com.ane.filemanager.ui.selection.ClickResult
@@ -51,6 +52,8 @@ internal class FileManagerGestureController(
     private var directMouseDragCandidate = false
     private var onboardingBlockedTouch = false
     private var onboardingActionPending = false
+    private var downOnboardingLayout: LayoutMode? = null
+    private var downOnboardingNext = false
     private var lastSecondaryClickTime = 0L
     private var lastSecondaryClickX = 0f
     private var lastSecondaryClickY = 0f
@@ -84,6 +87,47 @@ internal class FileManagerGestureController(
     }
 
     fun onTouchEvent(event: MotionEvent): Boolean = with(view) {
+        if (onboarding.active && onboarding.step == Step.LAYOUT) {
+            if (event.pointerCount > 1 || event.isSecondaryMouseInput()) {
+                downOnboardingLayout = null
+                downOnboardingNext = false
+                if (event.actionMasked == MotionEvent.ACTION_DOWN ||
+                    event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+                    performHapticFeedback(HapticFeedbackConstants.REJECT)
+                }
+                return@with true
+            }
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downOnboardingLayout = onboarding.layoutChoiceAt(event.x, event.y)
+                    downOnboardingNext = onboarding.isLayoutNextAt(event.x, event.y)
+                    if (downOnboardingLayout == null && !downOnboardingNext) {
+                        performHapticFeedback(HapticFeedbackConstants.REJECT)
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    val released = onboarding.layoutChoiceAt(event.x, event.y)
+                    if (released != null && released == downOnboardingLayout) {
+                        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        chooseOnboardingLayout(released)
+                    } else if (downOnboardingNext && onboarding.isLayoutNextAt(event.x, event.y)) {
+                        if (onboarding.selectedLayout != null) {
+                            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            confirmOnboardingLayout()
+                        } else {
+                            performHapticFeedback(HapticFeedbackConstants.REJECT)
+                        }
+                    }
+                    downOnboardingLayout = null
+                    downOnboardingNext = false
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    downOnboardingLayout = null
+                    downOnboardingNext = false
+                }
+            }
+            return@with true
+        }
         if (onboarding.active) {
             if (event.pointerCount > 1 || event.isSecondaryMouseInput()) {
                 onboardingBlockedTouch = true

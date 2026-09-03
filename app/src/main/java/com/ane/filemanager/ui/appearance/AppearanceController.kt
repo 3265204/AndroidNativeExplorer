@@ -23,7 +23,7 @@ internal class AppearanceController(context: Context) {
 
     var showHidden: Boolean = prefs.getBoolean("showHidden", false)
         private set
-    var layoutMode: LayoutMode = if (prefs.getString("layout", "list") == "grid") {
+    var layoutMode: LayoutMode = if (prefs.getString(KEY_LAYOUT, "list") == "grid") {
         LayoutMode.GRID
     } else {
         LayoutMode.LIST
@@ -45,10 +45,16 @@ internal class AppearanceController(context: Context) {
 
     fun snapshot() = AppearanceSettings(layoutMode, dark, textSp, iconDp, spacingDp)
 
-    fun setLayoutMode(value: LayoutMode) {
-        if (layoutMode == value) return
+    /** Applies a temporary layout preview without changing the persisted preference. */
+    fun previewLayoutMode(value: LayoutMode) {
         layoutMode = value
-        prefs.edit().putString("layout", if (layoutMode == LayoutMode.GRID) "grid" else "list").apply()
+    }
+
+    fun setLayoutMode(value: LayoutMode) {
+        layoutMode = value
+        // Persist even when the explicit choice matches the default. Onboarding should record
+        // the user's decision rather than relying on whatever the default happens to be.
+        prefs.edit().putString(KEY_LAYOUT, if (layoutMode == LayoutMode.GRID) "grid" else "list").apply()
     }
 
     fun setThemeMode(value: ThemeMode) {
@@ -96,6 +102,7 @@ internal class AppearanceController(context: Context) {
     }
 
     companion object {
+        private const val KEY_LAYOUT = "layout"
         private const val KEY_THEME_MODE = "themeMode"
         private const val KEY_LEGACY_DARK = "dark"
         const val TEXT_SIZE_MIN_SP = 12
