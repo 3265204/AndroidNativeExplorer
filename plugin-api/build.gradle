@@ -2,17 +2,19 @@ plugins {
     id 'com.android.library'
 }
 
+def aneConfig = rootProject.ext.aneConfig
+
 android {
     namespace 'com.ane.filemanager.plugin.api'
-    compileSdk 36
+    compileSdk aneConfig.compileSdk
 
     defaultConfig {
-        minSdk 24
+        minSdk aneConfig.minSdk
         consumerProguardFiles 'consumer-rules.pro'
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility aneConfig.javaVersion
+        targetCompatibility aneConfig.javaVersion
     }
 }

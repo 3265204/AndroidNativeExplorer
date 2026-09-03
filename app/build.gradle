@@ -2,6 +2,7 @@ plugins {
     id 'com.android.application'
 }
 
+def aneConfig = rootProject.ext.aneConfig
 def keystorePropertiesFile = rootProject.file('keystore.properties')
 def keystoreProperties = new Properties()
 def hasReleaseSigning = keystorePropertiesFile.exists()
@@ -12,17 +13,17 @@ if (hasReleaseSigning) {
 
 android {
     namespace 'com.ane.filemanager'
-    compileSdk 36
-    ndkVersion '29.0.14206865'
+    compileSdk aneConfig.compileSdk
+    ndkVersion aneConfig.ndkVersion
 
     defaultConfig {
-        applicationId 'com.ane.filemanager'
-        minSdk 24
-        targetSdk 35
-        versionCode 4
-        versionName '0.3.2'
+        applicationId aneConfig.applicationId
+        minSdk aneConfig.minSdk
+        targetSdk aneConfig.targetSdk
+        versionCode aneConfig.versionCode
+        versionName aneConfig.versionName
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            abiFilters(*aneConfig.supportedAbis)
         }
     }
 
@@ -84,8 +85,8 @@ android {
 
     compileOptions {
         coreLibraryDesugaringEnabled true
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility aneConfig.javaVersion
+        targetCompatibility aneConfig.javaVersion
     }
 }
 
