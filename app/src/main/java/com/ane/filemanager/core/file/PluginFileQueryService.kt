@@ -1,12 +1,11 @@
 package com.ane.filemanager.core.file
 
-import android.webkit.MimeTypeMap
 import com.ane.filemanager.plugin.api.PluginFile
 import com.ane.filemanager.plugin.api.file.AnePluginFileQueries
 import com.ane.filemanager.plugin.api.file.AnePluginFileSequence
 import java.io.File
 
-/** Host implementation of read-only file discovery exposed to plugins. */
+/** Adapts host files and sibling discovery to the plugin file-query API. */
 internal object PluginFileQueryService : AnePluginFileQueries {
     override fun resolve(path: String): PluginFile? = File(path)
         .takeIf(File::exists)
@@ -31,8 +30,7 @@ internal object PluginFileQueryService : AnePluginFileQueries {
 }
 
 internal fun File.asPluginFile(): PluginFile {
-    val normalizedExtension = extension.lowercase()
-    val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(normalizedExtension)
-        ?: "application/octet-stream"
+    val normalizedExtension = FileTypeResolver.extension(this)
+    val mime = FileTypeResolver.mimeType(normalizedExtension, "application/octet-stream")
     return PluginFile(absolutePath, name, normalizedExtension, mime)
 }

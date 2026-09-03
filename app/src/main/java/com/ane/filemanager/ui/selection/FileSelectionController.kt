@@ -4,8 +4,6 @@ import java.io.File
 
 /** Owns selection state and click semantics; it performs no drawing or file mutation. */
 internal class FileSelectionController(
-    private val openFile: (File) -> Unit,
-    private val openDirectory: (File) -> Unit,
     private val invalidate: () -> Unit,
     private val doubleClickTimeoutMs: Long,
     private val monotonicTimeMs: () -> Long = { System.nanoTime() / NANOSECONDS_PER_MILLISECOND },
@@ -73,23 +71,23 @@ internal class FileSelectionController(
         else if (!contains(file)) set(file, true)
     }
 
-    fun click(file: File) {
+    fun click(file: File): ClickResult {
         if (multiSelect) {
             resetClickSequence()
             set(file, !contains(file))
-            return
+            return ClickResult.SELECTION_TOGGLED
         }
         val now = monotonicTimeMs()
         val doubleClick = lastClickPath == file.absolutePath &&
             now - lastClickTime <= doubleClickTimeoutMs
         if (doubleClick) {
             resetClickSequence()
-            if (file.isDirectory) openDirectory(file) else openFile(file)
-            return
+            return if (file.isDirectory) ClickResult.OPEN_DIRECTORY else ClickResult.OPEN_FILE
         }
         lastClickPath = file.absolutePath
         lastClickTime = now
         replace(file)
+        return ClickResult.SELECTED
     }
 
     fun selectAll(items: List<File>) {
@@ -128,4 +126,11 @@ internal class FileSelectionController(
     private companion object {
         const val NANOSECONDS_PER_MILLISECOND = 1_000_000L
     }
+}
+
+internal enum class ClickResult {
+    SELECTED,
+    SELECTION_TOGGLED,
+    OPEN_FILE,
+    OPEN_DIRECTORY
 }

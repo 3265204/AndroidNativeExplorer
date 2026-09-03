@@ -2,7 +2,7 @@ package com.ane.filemanager.core.file
 
 import java.io.File
 
-/** Read-only file discovery shared by UI search and future natural-language actions. */
+/** Case-insensitive filtering over a caller-provided file list; it never traverses directories. */
 internal object FileQueryService {
     fun matchingName(items: List<File>, query: String): List<File> {
         val needle = query.trim()

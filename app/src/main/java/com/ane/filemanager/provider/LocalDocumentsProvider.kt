@@ -9,8 +9,8 @@ import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
-import android.webkit.MimeTypeMap
 import com.ane.filemanager.R
+import com.ane.filemanager.core.file.FileTypeResolver
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -112,8 +112,7 @@ class LocalDocumentsProvider : DocumentsProvider() {
 
     private fun mimeTypeFor(file: File): String {
         if (file.isDirectory) return DocumentsContract.Document.MIME_TYPE_DIR
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase())
-            ?: "application/octet-stream"
+        return FileTypeResolver.mimeType(file, "application/octet-stream")
     }
 
     private inline fun MatrixCursor.RowBuilder.addValues(

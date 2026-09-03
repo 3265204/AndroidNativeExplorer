@@ -13,8 +13,9 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Session-wide owner of file mutation serialization, reversible history, and trash payloads.
  *
- * UI controllers and plugins share this service. Presentation stays in their respective layers;
- * every mutation still enters the same worker and history tree.
+ * UI controllers and plugins share this service. The single worker intentionally serializes only
+ * final filesystem mutations and their history updates. Expensive plugin computation belongs on
+ * the plugin executor before it enters this queue.
  */
 internal class FileTransactionService(rootDirectory: File) {
     internal val files = FileOperationService()
@@ -34,6 +35,7 @@ internal class FileTransactionService(rootDirectory: File) {
         execute { files.cleanupTrash(trashDirectory) }
     }
 
+    /** Queues an asynchronous mutation; callers must not put unrelated long-running work here. */
     fun execute(task: () -> Unit): Boolean {
         if (closed.get()) return false
         return try {
@@ -44,7 +46,13 @@ internal class FileTransactionService(rootDirectory: File) {
         }
     }
 
-    /** Runs a synchronous plugin mutation on the shared worker without creating a second queue. */
+    /**
+     * Runs a synchronous mutation on the shared worker without creating a second queue.
+     *
+     * The worker identity check is required for reentrancy: code already running via [execute]
+     * may reach [call] through a nested commit. Submitting and then waiting on this same
+     * single-thread executor would deadlock, so do not remove or replace the direct-call branch.
+     */
     fun <T> call(task: () -> T): T {
         if (Thread.currentThread() === workerThread.get()) return task()
         if (closed.get()) throw IOException("File transaction service is closed")

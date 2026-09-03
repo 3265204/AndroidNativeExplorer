@@ -1,9 +1,11 @@
 package com.ane.filemanager.ui.selection
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class FileSelectionControllerTest {
     @Test
@@ -35,10 +37,7 @@ class FileSelectionControllerTest {
     fun `reset click sequence prevents the next tap from opening`() {
         val file = File("/selection/file")
         var now = 0L
-        var opened = false
         val controller = FileSelectionController(
-            openFile = { opened = true },
-            openDirectory = { opened = true },
             invalidate = {},
             doubleClickTimeoutMs = 300L,
             monotonicTimeMs = { now }
@@ -47,15 +46,30 @@ class FileSelectionControllerTest {
         controller.click(file)
         controller.resetClickSequence()
         now = 100L
-        controller.click(file)
+        val result = controller.click(file)
 
-        assertFalse(opened)
+        assertEquals(ClickResult.SELECTED, result)
         assertTrue(controller.contains(file))
     }
 
+    @Test
+    fun `double click on directory requests directory navigation`() {
+        val directory = createTempDirectory("selection-directory-").toFile()
+        var now = 0L
+        val controller = FileSelectionController(
+            invalidate = {},
+            doubleClickTimeoutMs = 300L,
+            monotonicTimeMs = { now }
+        )
+
+        assertEquals(ClickResult.SELECTED, controller.click(directory))
+        now = 100L
+        assertEquals(ClickResult.OPEN_DIRECTORY, controller.click(directory))
+
+        directory.delete()
+    }
+
     private fun controller() = FileSelectionController(
-        openFile = {},
-        openDirectory = {},
         invalidate = {},
         doubleClickTimeoutMs = 300L
     )

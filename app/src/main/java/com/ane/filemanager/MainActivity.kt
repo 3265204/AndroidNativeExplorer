@@ -15,11 +15,11 @@ import android.provider.DocumentsContract
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
-import android.webkit.MimeTypeMap
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.text.InputType
+import com.ane.filemanager.core.file.FileTypeResolver
 import com.ane.filemanager.operation.FileProblem
 import com.ane.filemanager.operation.fileProblemMessage
 import com.ane.filemanager.interaction.FileInteractionService
@@ -56,10 +56,12 @@ class MainActivity : Activity() {
         }
         pickerRequest = PickerRequest.from(intent)
         val viewedDirectory = resolveViewedDirectory(intent)
-        val onboardingWorkspace = if (pickerRequest == null && !onboardingStore.isCompleted()) {
+        val onboardingWorkspace = if (
+            !BuildConfig.DEBUG && pickerRequest == null && !onboardingStore.isCompleted()
+        ) {
             OnboardingWorkspace.prepare(this)
         } else {
-            if (onboardingStore.isCompleted()) OnboardingWorkspace.clear(this)
+            if (BuildConfig.DEBUG || onboardingStore.isCompleted()) OnboardingWorkspace.clear(this)
             null
         }
         contentRoot = FrameLayout(this)
@@ -377,8 +379,8 @@ class MainActivity : Activity() {
             }
         }
 
-        fun mimeTypeFor(file: File): String = MimeTypeMap.getSingleton()
-            .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+        fun mimeTypeFor(file: File): String =
+            FileTypeResolver.mimeType(file, "application/octet-stream")
 
         companion object {
             fun from(intent: Intent): PickerRequest? {

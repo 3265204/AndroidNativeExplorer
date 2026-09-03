@@ -6,9 +6,9 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Intent
 import android.os.Build
-import android.webkit.MimeTypeMap
 import android.widget.Toast
 import com.ane.filemanager.R
+import com.ane.filemanager.core.file.FileTypeResolver
 import com.ane.filemanager.openwith.ChosenAppReceiver
 import com.ane.filemanager.openwith.OpenWithStore
 import com.ane.filemanager.provider.LocalFileProvider
@@ -32,8 +32,8 @@ internal class FileInteractionService(private val activity: Activity) {
     }
 
     fun open(file: File, forceChooser: Boolean = false): Boolean {
-        val extension = fileExtension(file)
-        val mime = mimeType(file)
+        val extension = FileTypeResolver.extension(file)
+        val mime = FileTypeResolver.mimeType(file, "*/*")
         val uri = LocalFileProvider.uriFor(activity, file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
@@ -79,7 +79,7 @@ internal class FileInteractionService(private val activity: Activity) {
 
     private fun launchShare(files: List<File>): Boolean {
         val uris = ArrayList(files.map { LocalFileProvider.uriFor(activity, it) })
-        val mimeTypes = files.map(::mimeType)
+        val mimeTypes = files.map { FileTypeResolver.mimeType(it, "*/*") }
         val target = Intent(if (files.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {
             type = ShareMimeTypes.common(mimeTypes)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -146,12 +146,6 @@ internal class FileInteractionService(private val activity: Activity) {
         toast(failureMessage)
         false
     }
-
-    private fun fileExtension(file: File): String =
-        MimeTypeMap.getFileExtensionFromUrl(file.name).lowercase()
-
-    private fun mimeType(file: File): String =
-        MimeTypeMap.getSingleton().getMimeTypeFromExtension(fileExtension(file)) ?: "*/*"
 
     private fun toast(message: Int) =
         Toast.makeText(activity, message, Toast.LENGTH_SHORT).show()

@@ -11,7 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
-import android.webkit.MimeTypeMap
+import com.ane.filemanager.core.file.FileTypeResolver
 import com.ane.filemanager.sharing.SharePreparationStore
 import java.io.File
 import java.io.FileNotFoundException
@@ -57,8 +57,7 @@ class LocalFileProvider : ContentProvider() {
     }
 
     override fun getType(uri: Uri): String {
-        val ext = checkedFile(uri).extension.lowercase()
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+        return FileTypeResolver.mimeType(checkedFile(uri), "application/octet-stream")
     }
 
     override fun insert(uri: Uri, values: ContentValues?) = throw UnsupportedOperationException("Read only")
