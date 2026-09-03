@@ -25,6 +25,9 @@
     <string name="open_mode_once">仅此一次</string>
     <string name="open_mode_always">始终</string>
     <string name="file_manager_description">本地文件管理器</string>
+    <string name="picker_select">选择</string>
+    <string name="picker_select_count">选择（%1$d）</string>
+    <string name="picker_select_folder">选择此文件夹</string>
     <string name="app_menu_symbol" translatable="false">☰</string>
     <string name="navigate_up_symbol" translatable="false">↑</string>
     <string name="sort_symbol" translatable="false">⇅</string>

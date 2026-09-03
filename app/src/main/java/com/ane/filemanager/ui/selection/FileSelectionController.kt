@@ -8,7 +8,8 @@ internal class FileSelectionController(
     private val openDirectory: (File) -> Unit,
     private val invalidate: () -> Unit,
     private val doubleClickTimeoutMs: Long,
-    private val monotonicTimeMs: () -> Long = { System.nanoTime() / NANOSECONDS_PER_MILLISECOND }
+    private val monotonicTimeMs: () -> Long = { System.nanoTime() / NANOSECONDS_PER_MILLISECOND },
+    private val onSelectionChanged: (List<File>) -> Unit = {}
 ) {
     private val selected = linkedSetOf<String>()
     private val slideVisited = hashSetOf<String>()
@@ -27,12 +28,12 @@ internal class FileSelectionController(
     fun files() = selected.map(::File).filter(File::exists)
 
     fun retain(items: List<File>) {
-        selected.retainAll(items.mapTo(hashSetOf()) { it.absolutePath })
+        if (selected.retainAll(items.mapTo(hashSetOf()) { it.absolutePath })) changed()
     }
 
     fun enterMultiSelect() {
         multiSelect = true
-        invalidate()
+        changed()
     }
 
     fun exitMultiSelect() {
@@ -42,24 +43,24 @@ internal class FileSelectionController(
 
     fun clear() {
         selected.clear()
-        invalidate()
+        changed()
     }
 
     fun replace(file: File?) {
         selected.clear()
         if (file != null) selected += file.absolutePath
-        invalidate()
+        changed()
     }
 
     fun set(file: File, shouldSelect: Boolean) {
         if (shouldSelect) selected += file.absolutePath else selected -= file.absolutePath
-        invalidate()
+        changed()
     }
 
     fun selectOnLongPress(file: File) {
         if (!multiSelect) selected.clear()
         selected += file.absolutePath
-        invalidate()
+        changed()
     }
 
     fun prepareContext(file: File) {
@@ -93,7 +94,7 @@ internal class FileSelectionController(
         multiSelect = true
         selected.clear()
         selected += items.map(File::getAbsolutePath)
-        invalidate()
+        changed()
     }
 
     fun beginSlide(file: File) {
@@ -114,6 +115,11 @@ internal class FileSelectionController(
     fun dragFiles(origin: File?): List<File> {
         origin ?: return emptyList()
         return if (contains(origin) && size > 1) files() else listOf(origin)
+    }
+
+    private fun changed() {
+        invalidate()
+        onSelectionChanged(files())
     }
 
     private companion object {

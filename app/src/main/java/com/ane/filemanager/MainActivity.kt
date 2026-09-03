@@ -3,6 +3,7 @@ package com.ane.filemanager
 import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -10,8 +11,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.DocumentsContract
 import android.provider.Settings
+import android.view.Gravity
 import android.view.View
+import android.webkit.MimeTypeMap
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.text.InputType
@@ -20,6 +25,8 @@ import com.ane.filemanager.operation.fileProblemMessage
 import com.ane.filemanager.interaction.FileInteractionService
 import com.ane.filemanager.core.file.FileQueryService
 import com.ane.filemanager.localization.AppLanguage
+import com.ane.filemanager.provider.LocalDocumentsProvider
+import com.ane.filemanager.sharing.ShareMimeTypes
 import com.ane.filemanager.ui.FileManagerView
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
@@ -28,6 +35,8 @@ import java.io.File
 class MainActivity : Activity() {
     private lateinit var contentRoot: FrameLayout
     private lateinit var fileView: FileManagerView
+    private var pickerRequest: PickerRequest? = null
+    private var pickerButton: Button? = null
     private var fullscreenOverlay: View? = null
     private var fullscreenOverlayBack: (() -> Unit)? = null
     private val fileInteractionsDelegate = lazy { FileInteractionService(this) }
@@ -42,9 +51,19 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 24) {
             android.os.StrictMode.setVmPolicy(android.os.StrictMode.VmPolicy.Builder().build())
         }
+        pickerRequest = PickerRequest.from(intent)
+        val viewedDirectory = resolveViewedDirectory(intent)
         contentRoot = FrameLayout(this)
-        fileView = FileManagerView(this)
+        fileView = FileManagerView(
+            host = this,
+            launchDirectory = viewedDirectory,
+            pickerAllowsMultiple = pickerRequest?.allowsMultiple == true,
+            fileFilter = { pickerRequest?.accepts(it) != false },
+            onPickerFileOpened = pickerRequest?.let { { file -> handlePickerFileOpened(file) } },
+            onSelectionChanged = ::updatePickerButton
+        )
         contentRoot.addView(fileView, FrameLayout.LayoutParams(-1, -1))
+        pickerRequest?.let { addPickerButton() }
         setContentView(contentRoot)
         ensureStorageAccess()
     }
@@ -108,6 +127,42 @@ class MainActivity : Activity() {
 
     fun initialDirectory(): File = Environment.getExternalStorageDirectory()
         ?.takeIf(File::isDirectory) ?: getExternalFilesDir(null) ?: filesDir
+
+    /** Resolves directory URIs sent by file-transfer apps such as LocalSend. */
+    private fun resolveViewedDirectory(intent: Intent): File? {
+        if (intent.action != Intent.ACTION_VIEW || intent.type !in DIRECTORY_MIME_TYPES) return null
+        val uri = intent.data ?: return null
+        val directory = runCatching {
+            when (uri.scheme) {
+                "file" -> uri.path?.let(::File)
+                "content" -> resolveDocumentDirectory(uri)
+                else -> null
+            }?.canonicalFile
+        }.getOrNull()
+        return directory?.takeIf { it.isDirectory && it.canRead() }
+    }
+
+    private fun resolveDocumentDirectory(uri: Uri): File? {
+        val documentId = when {
+            DocumentsContract.isTreeUri(uri) -> DocumentsContract.getTreeDocumentId(uri)
+            DocumentsContract.isDocumentUri(this, uri) -> DocumentsContract.getDocumentId(uri)
+            else -> return null
+        }
+        if (uri.authority == "$packageName.documents") {
+            return if (documentId == "root") initialDirectory() else File(initialDirectory(), documentId)
+        }
+        if (uri.authority != EXTERNAL_STORAGE_AUTHORITY) return null
+
+        if (documentId.startsWith("raw:")) return File(documentId.removePrefix("raw:"))
+        val volumeId = documentId.substringBefore(':', missingDelimiterValue = documentId)
+        val relativePath = documentId.substringAfter(':', missingDelimiterValue = "")
+        val volumeRoot = when (volumeId.lowercase()) {
+            "primary" -> initialDirectory()
+            "home" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            else -> File("/storage", volumeId)
+        }
+        return if (relativePath.isEmpty()) volumeRoot else File(volumeRoot, relativePath)
+    }
 
     fun promptName(title: String, initial: String, callback: (String) -> Unit) {
         AneDialog.input(
@@ -205,11 +260,140 @@ class MainActivity : Activity() {
             return
         }
         if (::fileView.isInitialized && fileView.handleBack()) return
+        if (pickerRequest != null) {
+            setResult(RESULT_CANCELED)
+            finish()
+            return
+        }
         AneDialog.message(this, getString(R.string.dialog_exit_title),
             getString(R.string.dialog_exit_message), listOf(
                 AneDialogAction(getString(R.string.dialog_cancel)),
                 AneDialogAction(getString(R.string.dialog_exit_confirm), primary = true, run = ::finish)
             ))
+    }
+
+    private fun addPickerButton() {
+        val selectsDirectory = pickerRequest?.selectsDirectory == true
+        val button = Button(this).apply {
+            isAllCaps = false
+            isEnabled = selectsDirectory
+            text = getString(if (selectsDirectory) R.string.picker_select_folder else R.string.picker_select)
+            setOnClickListener {
+                if (selectsDirectory) returnPickedDirectory(fileView.pickerDirectory())
+                else returnPickedFiles(fileView.selectedFiles())
+            }
+        }
+        val density = resources.displayMetrics.density
+        val horizontalMargin = (20 * density).toInt()
+        val bottomMarginAboveDock = (74 * density).toInt()
+        contentRoot.addView(button, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.END or Gravity.BOTTOM
+        ).apply {
+            marginEnd = horizontalMargin
+            bottomMargin = bottomMarginAboveDock
+        })
+        pickerButton = button
+    }
+
+    private fun updatePickerButton(files: List<File>) {
+        if (pickerRequest?.selectsDirectory == true) return
+        pickerButton?.apply {
+            isEnabled = files.isNotEmpty()
+            text = if (files.isEmpty()) getString(R.string.picker_select)
+            else getString(R.string.picker_select_count, files.size)
+        }
+    }
+
+    private fun handlePickerFileOpened(file: File) {
+        if (pickerRequest?.selectsDirectory != true) returnPickedFiles(listOf(file))
+    }
+
+    private fun returnPickedFiles(selected: List<File>) {
+        val request = pickerRequest ?: return
+        val files = selected.filter(File::isFile).let {
+            if (request.allowsMultiple) it else it.take(1)
+        }
+        if (files.isEmpty()) return
+
+        val uris = files.map { LocalDocumentsProvider.uriFor(this, it) }
+        val result = Intent().apply {
+            data = uris.first()
+            clipData = ClipData.newUri(contentResolver, files.first().name, uris.first()).also { clip ->
+                uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+            }
+            type = ShareMimeTypes.common(files.map(request::mimeTypeFor))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (request.persistable) addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        setResult(RESULT_OK, result)
+        finish()
+    }
+
+    private fun returnPickedDirectory(directory: File) {
+        if (!directory.isDirectory) return
+        val uri = LocalDocumentsProvider.treeUriFor(this, directory)
+        val result = Intent().apply {
+            data = uri
+            clipData = ClipData.newUri(contentResolver, directory.name, uri)
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+            )
+        }
+        setResult(RESULT_OK, result)
+        finish()
+    }
+
+    private class PickerRequest(
+        val allowsMultiple: Boolean,
+        val persistable: Boolean,
+        val selectsDirectory: Boolean,
+        private val acceptedTypes: List<String>
+    ) {
+        fun accepts(file: File): Boolean {
+            if (selectsDirectory) return false
+            val actual = mimeTypeFor(file)
+            return acceptedTypes.any { requested ->
+                requested == "*/*" || requested == actual ||
+                    requested.endsWith("/*") && actual.startsWith(requested.substringBefore('/') + "/")
+            }
+        }
+
+        fun mimeTypeFor(file: File): String = MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+
+        companion object {
+            fun from(intent: Intent): PickerRequest? {
+                if (intent.action != Intent.ACTION_GET_CONTENT &&
+                    intent.action != Intent.ACTION_OPEN_DOCUMENT &&
+                    intent.action != Intent.ACTION_OPEN_DOCUMENT_TREE
+                ) {
+                    return null
+                }
+                val extraTypes = intent.getStringArrayExtra(Intent.EXTRA_MIME_TYPES)
+                    ?.filter(String::isNotBlank)
+                    .orEmpty()
+                val types = extraTypes.ifEmpty { listOf(intent.type ?: "*/*") }
+                return PickerRequest(
+                    allowsMultiple = intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false),
+                    persistable = intent.action != Intent.ACTION_GET_CONTENT,
+                    selectsDirectory = intent.action == Intent.ACTION_OPEN_DOCUMENT_TREE,
+                    acceptedTypes = types
+                )
+            }
+        }
+    }
+
+    private companion object {
+        const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
+        val DIRECTORY_MIME_TYPES = setOf(
+            "inode/directory",
+            "resource/folder",
+            DocumentsContract.Document.MIME_TYPE_DIR
+        )
     }
 
 }

@@ -22,6 +22,46 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- A dedicated resolver component avoids OEMs filtering a launcher activity from
+             ACTION_OPEN_DOCUMENT candidates. The target activity detects the incoming action. -->
+        <activity-alias
+            android:name=".FilePickerActivity"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:visibleToInstantApps="true">
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.OPEN_DOCUMENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.OPEN_DOCUMENT_TREE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+        <!-- LocalSend opens received folders with ACTION_VIEW and the platform directory
+             MIME type. Register a separate resolver entry so ANE is offered for that flow. -->
+        <activity-alias
+            android:name=".DirectoryViewerActivity"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="inode/directory" />
+                <data android:mimeType="resource/folder" />
+                <data android:mimeType="vnd.android.document/directory" />
+            </intent-filter>
+        </activity-alias>
         <activity
             android:name=".plugin.image.ui.ImageActivity"
             android:exported="false" />
@@ -43,5 +83,15 @@
             android:authorities="${applicationId}.files"
             android:exported="false"
             android:grantUriPermissions="true" />
+        <provider
+            android:name=".provider.LocalDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
     </application>
 </manifest>

@@ -51,7 +51,14 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /** Android View boundary: assembles render state and routes pointer/keyboard events to controllers. */
-internal class FileManagerView(private val host: MainActivity) : View(host) {
+internal class FileManagerView(
+    private val host: MainActivity,
+    private val launchDirectory: File? = null,
+    private val pickerAllowsMultiple: Boolean = false,
+    private val fileFilter: (File) -> Boolean = { true },
+    private val onPickerFileOpened: ((File) -> Unit)? = null,
+    onSelectionChanged: (List<File>) -> Unit = {}
+) : View(host) {
     private val density = resources.displayMetrics.density
     private fun dp(value: Float) = value * density
     private val handler = Handler(Looper.getMainLooper())
@@ -78,13 +85,14 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         openFile = ::openFile,
         openDirectory = { navigateTo(it) },
         invalidate = { invalidate() },
-        doubleClickTimeoutMs = GestureTiming.doubleTapTimeoutMs
+        doubleClickTimeoutMs = GestureTiming.doubleTapTimeoutMs,
+        onSelectionChanged = onSelectionChanged
     )
     private val directoryLoader = DirectoryLoader { directory, loaded ->
         post {
             if (!::dock.isInitialized || !sameDirectory(currentDirectory, directory)) return@post
             renderer.onDirectoryContentsChanged()
-            items = loaded
+            items = loaded.filter { it.isDirectory || fileFilter(it) }
             displayedDirectoryPath = directory.absolutePath
             directoryTransitioning = false
             if (pendingContentRevealPath == directory.absolutePath) {
@@ -154,7 +162,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
                 draggedTab = tabs[index]
                 renderer.restartTabMarquee(index)
                 if (dock.switchTo(index)) {
-                    selection.exitMultiSelect()
+                    resetSelectionForNavigation()
                     onNavigationChanged()
                 }
             } else {
@@ -218,6 +226,9 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             activeDirectory = restored?.activeDirectory ?: root,
             onChanged = ::persistDock
         )
+        launchDirectory
+            ?.takeIf { it.isDirectory && it.canRead() }
+            ?.let(dock::navigateTo)
         lastActiveTab = dock.currentTab
         lastActiveIndex = dock.activeIndex
         persistDock()
@@ -256,6 +267,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             openPermissionSettings = { openPermissionSettings() }
         )
         applySystemColors()
+        if (pickerAllowsMultiple) selection.enterMultiSelect()
         refresh()
     }
 
@@ -279,6 +291,10 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     fun persistSession() {
         if (::dock.isInitialized) dockStore.save(tabs, activeTab, durable = true)
     }
+
+    fun selectedFiles(): List<File> = selection.files().filter(File::isFile)
+
+    fun pickerDirectory(): File = currentDirectory
 
     private fun persistDock() {
         if (::dock.isInitialized) dockStore.save(tabs, activeTab)
@@ -626,7 +642,8 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             !moved && downTab >= 0 -> switchTab(downTab)
             !moved && downFile != null -> {
                 renderer.restartFileMarquee(downFile!!)
-                selection.click(downFile!!)
+                if (onPickerFileOpened != null && downFile!!.isDirectory) navigateTo(downFile!!)
+                else selection.click(downFile!!)
             }
             !moved && y in topBarBottom..contentBottom -> selection.clear()
         }
@@ -815,7 +832,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         }
         dock.navigateTo(directory)
         sorting.markOpened(directory)
-        selection.exitMultiSelect(); onNavigationChanged()
+        resetSelectionForNavigation(); onNavigationChanged()
     }
 
     private fun navigateUp() = currentDirectory.parentFile?.let(::navigateTo) ?: Unit
@@ -824,7 +841,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         renderer.restartTabMarquee(index)
         if (dock.switchTo(index)) {
             sorting.markOpened(dock.currentDirectory)
-            selection.exitMultiSelect(); onNavigationChanged()
+            resetSelectionForNavigation(); onNavigationChanged()
         }
     }
 
@@ -832,7 +849,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
         if (menu.kind != MenuKind.NONE) { menu.close(); return true }
         if (dockEditing) { dockEditing = false; invalidate(); return true }
         if (dragging || tabDragging) { resetGesture(); return true }
-        if (selection.multiSelect) { selection.exitMultiSelect(); return true }
+        if (selection.multiSelect && !pickerAllowsMultiple) { selection.exitMultiSelect(); return true }
         if (!selection.isEmpty) { selection.clear(); return true }
         val parent = parentForSystemBack() ?: return false
         if (!dock.navigateBackTo(parent)) return false
@@ -898,7 +915,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     private fun navigateHistoryBack() {
         if (dock.goBack()) {
             sorting.markOpened(dock.currentDirectory)
-            selection.exitMultiSelect()
+            resetSelectionForNavigation()
             onNavigationChanged()
         }
     }
@@ -946,7 +963,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
 
     private fun selectSearchResult(file: File) {
         if (file !in items) return
-        if (selection.multiSelect) selection.exitMultiSelect()
+        if (selection.multiSelect && !pickerAllowsMultiple) selection.exitMultiSelect()
         selection.replace(file)
         renderer.restartFileMarquee(file)
         scrollY = renderer.scrollToRevealFile(file, scrollY)
@@ -961,11 +978,20 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     }
 
     private fun openFile(file: File) {
+        onPickerFileOpened?.let {
+            it(file)
+            return
+        }
         val opened = plugins.open(file) || host.openFile(file)
         if (opened) {
             sorting.markOpened(file)
             if (sorting.mode == FileSortMode.LAST_OPENED) refresh()
         }
+    }
+
+    private fun resetSelectionForNavigation() {
+        selection.exitMultiSelect()
+        if (pickerAllowsMultiple) selection.enterMultiSelect()
     }
 
     private fun s(resId: Int, vararg args: Any): String = host.getString(resId, *args)

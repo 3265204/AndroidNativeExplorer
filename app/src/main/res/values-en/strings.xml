@@ -24,6 +24,9 @@
     <string name="open_mode_once">Just once</string>
     <string name="open_mode_always">Always</string>
     <string name="file_manager_description">Local file manager</string>
+    <string name="picker_select">Select</string>
+    <string name="picker_select_count">Select (%1$d)</string>
+    <string name="picker_select_folder">Select this folder</string>
     <string name="sort_symbol" translatable="false">⇅</string>
     <string name="folder_detail">Folder  ·  %1$s</string>
     <string name="file_detail">%1$s  ·  %2$s</string>
