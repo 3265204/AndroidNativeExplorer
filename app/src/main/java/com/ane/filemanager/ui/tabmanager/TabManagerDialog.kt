@@ -35,8 +35,8 @@ internal class TabManagerDialog(
     private val onActiveTabChanged: () -> Unit,
     private val onTabsChanged: () -> Unit
 ) {
-    private val dark = host.getSharedPreferences("appearance", 0).getBoolean("dark", false)
-    private val theme = AneTheme.resolve(host, dark)
+    private val theme = AneTheme.resolve(host)
+    private val dark = theme.dark
     private val store = DockSessionStore(host)
     private lateinit var page: SecondaryPageScaffold
     private lateinit var summary: TextView

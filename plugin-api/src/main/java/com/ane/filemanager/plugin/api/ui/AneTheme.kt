@@ -2,6 +2,7 @@ package com.ane.filemanager.plugin.api.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -21,11 +22,20 @@ data class AneTheme(
 ) {
     companion object {
         /** Resolves the theme selected in ANE, including supported system dynamic colors. */
-        fun resolve(context: Context): AneTheme = resolve(
-            context,
-            context.getSharedPreferences(APPEARANCE_PREFERENCES, Context.MODE_PRIVATE)
-                .getBoolean(DARK_PREFERENCE, false)
-        )
+        fun resolve(context: Context): AneTheme {
+            val preferences = context.getSharedPreferences(APPEARANCE_PREFERENCES, Context.MODE_PRIVATE)
+            val dark = when (preferences.getString(THEME_MODE_PREFERENCE, null)) {
+                THEME_MODE_DARK -> true
+                THEME_MODE_LIGHT -> false
+                THEME_MODE_SYSTEM -> systemDark(context)
+                else -> if (preferences.contains(DARK_PREFERENCE)) {
+                    preferences.getBoolean(DARK_PREFERENCE, false)
+                } else {
+                    systemDark(context)
+                }
+            }
+            return resolve(context, dark)
+        }
 
         fun resolve(context: Context, dark: Boolean): AneTheme {
             val fallback = fallback(dark)
@@ -119,8 +129,16 @@ data class AneTheme(
             )
         }
 
+        private fun systemDark(context: Context): Boolean =
+            context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+                Configuration.UI_MODE_NIGHT_YES
+
         private const val APPEARANCE_PREFERENCES = "appearance"
         private const val DARK_PREFERENCE = "dark"
+        private const val THEME_MODE_PREFERENCE = "themeMode"
+        private const val THEME_MODE_SYSTEM = "system"
+        private const val THEME_MODE_LIGHT = "light"
+        private const val THEME_MODE_DARK = "dark"
     }
 }
 

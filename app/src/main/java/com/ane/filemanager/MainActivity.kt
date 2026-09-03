@@ -30,6 +30,7 @@ import com.ane.filemanager.sharing.ShareMimeTypes
 import com.ane.filemanager.ui.FileManagerView
 import com.ane.filemanager.ui.onboarding.OnboardingStore
 import com.ane.filemanager.ui.onboarding.OnboardingWorkspace
+import com.ane.filemanager.update.AppUpdateController
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
 import java.io.File
@@ -39,11 +40,12 @@ class MainActivity : Activity() {
     private lateinit var fileView: FileManagerView
     private var pickerRequest: PickerRequest? = null
     private var pickerButton: Button? = null
-    private var fullscreenOverlay: View? = null
-    private var fullscreenOverlayBack: (() -> Unit)? = null
+    private val fullscreenOverlays = mutableListOf<FullscreenOverlay>()
     private val onboardingStore by lazy { OnboardingStore(this) }
     private val fileInteractionsDelegate = lazy { FileInteractionService(this) }
     private val fileInteractions by fileInteractionsDelegate
+    private val updateControllerDelegate = lazy { AppUpdateController(this) }
+    internal val updateController: AppUpdateController get() = updateControllerDelegate.value
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(AppLanguage.wrap(base))
@@ -83,26 +85,27 @@ class MainActivity : Activity() {
         pickerRequest?.let { addPickerButton() }
         setContentView(contentRoot)
         if (onboardingWorkspace == null) ensureStorageAccess()
+        if (pickerRequest == null && onboardingWorkspace == null) updateController.checkOnLaunch()
     }
 
     fun showFullscreenOverlay(view: View, onBack: () -> Unit) {
-        fullscreenOverlay?.let(contentRoot::removeView)
-        fullscreenOverlay = view
-        fullscreenOverlayBack = onBack
+        fullscreenOverlays.removeAll { it.view === view }
+        fullscreenOverlays += FullscreenOverlay(view, onBack)
         contentRoot.addView(view, FrameLayout.LayoutParams(-1, -1))
         view.requestApplyInsets()
     }
 
     fun removeFullscreenOverlay(view: View) {
-        if (fullscreenOverlay !== view) return
+        val removed = fullscreenOverlays.removeAll { it.view === view }
+        if (!removed) return
         contentRoot.removeView(view)
-        fullscreenOverlay = null
-        fullscreenOverlayBack = null
+        fullscreenOverlays.lastOrNull()?.view?.requestApplyInsets()
     }
 
     override fun onResume() {
         super.onResume()
         if (::fileView.isInitialized) fileView.refresh()
+        if (updateControllerDelegate.isInitialized()) updateController.continuePendingInstallIfAllowed()
     }
 
     override fun onStop() {
@@ -272,8 +275,8 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        fullscreenOverlayBack?.let {
-            it()
+        fullscreenOverlays.lastOrNull()?.let {
+            it.onBack()
             return
         }
         if (::fileView.isInitialized && fileView.handleBack()) return
@@ -412,5 +415,7 @@ class MainActivity : Activity() {
             DocumentsContract.Document.MIME_TYPE_DIR
         )
     }
+
+    private data class FullscreenOverlay(val view: View, val onBack: () -> Unit)
 
 }

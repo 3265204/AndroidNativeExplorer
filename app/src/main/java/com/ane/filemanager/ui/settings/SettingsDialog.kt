@@ -17,10 +17,12 @@ import com.ane.filemanager.R
 import com.ane.filemanager.localization.AppLanguage
 import com.ane.filemanager.localization.LanguageMode
 import com.ane.filemanager.ui.appearance.AppearanceController
+import com.ane.filemanager.ui.appearance.ThemeMode
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.ui.model.LayoutMode
 import com.ane.filemanager.ui.secondary.SecondaryPageScaffold
 import com.ane.filemanager.plugin.api.ui.AneTheme
+import com.ane.filemanager.ui.settings.update.UpdateSettingsDialog
 
 /** Full-screen settings owner; values remain persisted by their focused controllers. */
 internal class SettingsDialog(
@@ -71,7 +73,11 @@ internal class SettingsDialog(
             ))
             add(choiceCard(
                 host.getString(R.string.settings_theme_title),
-                host.getString(if (appearance.dark) R.string.theme_dark else R.string.theme_light),
+                host.getString(when (appearance.themeMode) {
+                    ThemeMode.SYSTEM -> R.string.theme_system
+                    ThemeMode.LIGHT -> R.string.theme_light
+                    ThemeMode.DARK -> R.string.theme_dark
+                }),
                 ::chooseTheme
             ))
             add(sliderCard(
@@ -121,6 +127,11 @@ internal class SettingsDialog(
                 appearance.setShowHidden(checked)
                 onFilesChanged()
             })
+            add(choiceCard(
+                host.getString(R.string.settings_updates_title),
+                host.getString(R.string.settings_updates_hint),
+                ::openUpdateSettings
+            ))
             if (!host.hasStorageAccess()) add(choiceCard(
                 host.getString(R.string.setting_storage_permission),
                 host.getString(R.string.settings_storage_permission_hint),
@@ -225,7 +236,7 @@ internal class SettingsDialog(
         addView(Switch(host).apply {
             isChecked = checked
             contentDescription = title
-            setOnCheckedChangeListener { _, value -> if (value != appearance.showHidden) onChanged(value) }
+            setOnCheckedChangeListener { _, value -> onChanged(value) }
         })
     }
 
@@ -247,17 +258,21 @@ internal class SettingsDialog(
     }
 
     private fun chooseTheme() {
-        val values = listOf(false, true)
+        val values = ThemeMode.entries
         AneDialog.choices(
             activity = host,
             title = host.getString(R.string.settings_theme_title),
-            labels = listOf(host.getString(R.string.theme_light), host.getString(R.string.theme_dark)),
+            labels = listOf(
+                host.getString(R.string.theme_system),
+                host.getString(R.string.theme_light),
+                host.getString(R.string.theme_dark)
+            ),
             cancelLabel = host.getString(R.string.dialog_cancel),
             colors = theme
         ) { index ->
             val selected = values[index]
-            if (selected != appearance.dark) {
-                appearance.setDark(selected)
+            if (selected != appearance.themeMode) {
+                appearance.setThemeMode(selected)
                 host.recreate()
             }
         }
@@ -279,6 +294,15 @@ internal class SettingsDialog(
                 rebuild()
             }
         }
+    }
+
+    private fun openUpdateSettings() {
+        UpdateSettingsDialog(
+            host = host,
+            dark = appearance.dark,
+            originX = page.root.width / 2f,
+            originY = page.root.height / 2f
+        ).show()
     }
 
     private fun label(value: String, size: Float, color: Int, style: Int = Typeface.NORMAL) =

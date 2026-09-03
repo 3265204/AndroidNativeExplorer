@@ -110,7 +110,7 @@
     <string name="setting_settings">Settings</string>
     <string name="settings_title">Settings</string>
     <string name="settings_close_page">Back to file manager</string>
-    <string name="settings_summary">Language, theme, and file display</string>
+    <string name="settings_summary">Language, theme, file display, and app updates</string>
     <string name="settings_language_title">Select language</string>
     <string name="settings_theme_title">Theme</string>
     <string name="settings_layout_title">View mode</string>
@@ -119,6 +119,11 @@
     <string name="settings_spacing_title">Row spacing</string>
     <string name="settings_hidden_title">Show hidden files</string>
     <string name="settings_hidden_hint">Include dot-prefixed files in the file list</string>
+    <string name="settings_updates_title">App updates</string>
+    <string name="settings_updates_hint">Manage version checks and automatic updates</string>
+    <string name="settings_check_updates_title">Check for updates</string>
+    <string name="settings_automatic_updates_title">Automatic updates</string>
+    <string name="settings_automatic_updates_hint">Check and download new versions at startup (off by default)</string>
     <string name="settings_storage_permission_hint">Open Android storage access settings</string>
     <string name="settings_value_sp">%1$d sp</string>
     <string name="settings_value_dp">%1$d dp</string>
@@ -143,6 +148,36 @@
     <string name="layout_grid">Grid</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <string name="theme_system">Use system setting</string>
+
+    <string name="update_settings_title">App updates</string>
+    <string name="update_settings_close_page">Back to settings</string>
+    <string name="update_settings_summary">Version information, update checks, and automatic updates</string>
+    <string name="update_settings_version_title">Current version</string>
+    <string name="update_settings_version_value">%1$s (%2$s · version code %3$d)</string>
+    <string name="update_settings_build_beta">Beta build</string>
+    <string name="update_settings_build_release">Release build</string>
+    <string name="update_settings_check_hint">Check GitHub Releases for the latest stable version</string>
+
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_already_running">An update task is already running</string>
+    <string name="update_up_to_date_title">Up to date</string>
+    <string name="update_up_to_date_message">Version %1$s is the latest version.</string>
+    <string name="update_available_title">Update available</string>
+    <string name="update_available_message">Current version: %1$s\nLatest version: %2$s\n\n%3$s</string>
+    <string name="update_no_release_notes">No release notes were provided.</string>
+    <string name="update_later">Later</string>
+    <string name="update_download_and_install">Download and install</string>
+    <string name="update_downloading">Downloading %1$s…</string>
+    <string name="update_check_failed_title">Could not check for updates</string>
+    <string name="update_check_failed_message">Check your network connection and try again later.</string>
+    <string name="update_download_failed_title">Update download failed</string>
+    <string name="update_download_failed_message">The update package could not be downloaded or verified. Try again later.</string>
+    <string name="update_install_permission_title">Allow update installation</string>
+    <string name="update_install_permission_message">Android needs permission for ANE to install unknown apps. After permission is granted, the system installer will open automatically.</string>
+    <string name="update_open_permission_settings">Open permission settings</string>
+    <string name="update_install_failed_title">Could not open installer</string>
+    <string name="update_install_failed_message">No package installer is available. The APK remains in ANE’s app data.</string>
 
     <string name="tab_manager_title">Tab manager</string>
     <string name="tab_manager_close_page">Back to file manager</string>

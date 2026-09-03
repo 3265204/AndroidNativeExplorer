@@ -1,12 +1,25 @@
 package com.ane.filemanager.ui.appearance
 
 import android.content.Context
+import android.content.res.Configuration
 import com.ane.filemanager.ui.model.AppearanceSettings
 import com.ane.filemanager.ui.model.LayoutMode
+
+internal enum class ThemeMode(val preferenceValue: String) {
+    SYSTEM("system"),
+    LIGHT("light"),
+    DARK("dark")
+}
+
+internal fun resolveThemeMode(stored: String?, legacyDark: Boolean?): ThemeMode =
+    ThemeMode.entries.firstOrNull { it.preferenceValue == stored }
+        ?: legacyDark?.let { if (it) ThemeMode.DARK else ThemeMode.LIGHT }
+        ?: ThemeMode.SYSTEM
 
 /** Owns persisted presentation preferences; it does not draw or navigate. */
 internal class AppearanceController(context: Context) {
     private val prefs = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+    private val appContext = context
 
     var showHidden: Boolean = prefs.getBoolean("showHidden", false)
         private set
@@ -16,7 +29,12 @@ internal class AppearanceController(context: Context) {
         LayoutMode.LIST
     }
         private set
-    var dark: Boolean = prefs.getBoolean("dark", false)
+    var themeMode: ThemeMode = resolveThemeMode(
+        prefs.getString(KEY_THEME_MODE, null),
+        prefs.getBoolean(KEY_LEGACY_DARK, false).takeIf { prefs.contains(KEY_LEGACY_DARK) }
+    )
+        private set
+    var dark: Boolean = resolveDark(themeMode)
         private set
     var textSp: Int = prefs.getInt("textSp", 16).coerceIn(TEXT_SIZE_MIN_SP, TEXT_SIZE_MAX_SP)
         private set
@@ -33,10 +51,14 @@ internal class AppearanceController(context: Context) {
         prefs.edit().putString("layout", if (layoutMode == LayoutMode.GRID) "grid" else "list").apply()
     }
 
-    fun setDark(value: Boolean) {
-        if (dark == value) return
-        dark = value
-        prefs.edit().putBoolean("dark", dark).apply()
+    fun setThemeMode(value: ThemeMode) {
+        if (themeMode == value) return
+        themeMode = value
+        dark = resolveDark(value)
+        prefs.edit()
+            .putString(KEY_THEME_MODE, value.preferenceValue)
+            .putBoolean(KEY_LEGACY_DARK, dark)
+            .apply()
     }
 
     fun setTextSize(value: Int) {
@@ -66,7 +88,16 @@ internal class AppearanceController(context: Context) {
         prefs.edit().putBoolean("showHidden", showHidden).apply()
     }
 
+    private fun resolveDark(mode: ThemeMode): Boolean = when (mode) {
+        ThemeMode.SYSTEM -> appContext.resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+
     companion object {
+        private const val KEY_THEME_MODE = "themeMode"
+        private const val KEY_LEGACY_DARK = "dark"
         const val TEXT_SIZE_MIN_SP = 12
         const val TEXT_SIZE_MAX_SP = 24
         const val ICON_SIZE_MIN_DP = 24

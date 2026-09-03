@@ -50,6 +50,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix '.beta'
+            versionNameSuffix '-beta'
+        }
         release {
             if (hasReleaseSigning) {
                 signingConfig signingConfigs.release

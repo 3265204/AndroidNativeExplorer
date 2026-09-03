@@ -113,7 +113,7 @@
     <string name="setting_settings">设置</string>
     <string name="settings_title">设置</string>
     <string name="settings_close_page">返回文件管理器</string>
-    <string name="settings_summary">语言、主题与文件显示</string>
+    <string name="settings_summary">语言、主题、文件显示与应用更新</string>
     <string name="settings_language_title">选择语言</string>
     <string name="settings_theme_title">主题</string>
     <string name="settings_layout_title">显示模式</string>
@@ -122,6 +122,11 @@
     <string name="settings_spacing_title">行间距</string>
     <string name="settings_hidden_title">显示隐藏文件</string>
     <string name="settings_hidden_hint">在文件列表中显示以点开头的文件</string>
+    <string name="settings_updates_title">应用更新</string>
+    <string name="settings_updates_hint">管理版本检查与自动更新</string>
+    <string name="settings_check_updates_title">检查更新</string>
+    <string name="settings_automatic_updates_title">自动更新</string>
+    <string name="settings_automatic_updates_hint">启动时检查并下载新版本（默认关闭）</string>
     <string name="settings_storage_permission_hint">打开 Android 的存储访问设置</string>
     <string name="settings_value_sp">%1$d sp</string>
     <string name="settings_value_dp">%1$d dp</string>
@@ -147,6 +152,36 @@
     <string name="layout_grid">图标</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
+    <string name="theme_system">跟随系统</string>
+
+    <string name="update_settings_title">应用更新</string>
+    <string name="update_settings_close_page">返回设置</string>
+    <string name="update_settings_summary">版本信息、检查更新与自动更新</string>
+    <string name="update_settings_version_title">当前版本</string>
+    <string name="update_settings_version_value">%1$s（%2$s · 版本代码 %3$d）</string>
+    <string name="update_settings_build_beta">开发版 Beta</string>
+    <string name="update_settings_build_release">正式版</string>
+    <string name="update_settings_check_hint">从 GitHub Releases 检查最新稳定版</string>
+
+    <string name="update_checking">正在检查更新…</string>
+    <string name="update_already_running">更新任务正在进行</string>
+    <string name="update_up_to_date_title">已是最新版本</string>
+    <string name="update_up_to_date_message">当前版本 %1$s 已是最新版本。</string>
+    <string name="update_available_title">发现新版本</string>
+    <string name="update_available_message">当前版本：%1$s\n最新版本：%2$s\n\n%3$s</string>
+    <string name="update_no_release_notes">此版本没有更新说明。</string>
+    <string name="update_later">稍后</string>
+    <string name="update_download_and_install">下载并安装</string>
+    <string name="update_downloading">正在下载 %1$s…</string>
+    <string name="update_check_failed_title">无法检查更新</string>
+    <string name="update_check_failed_message">请检查网络连接，或稍后再试。</string>
+    <string name="update_download_failed_title">更新下载失败</string>
+    <string name="update_download_failed_message">无法下载或验证更新安装包，请稍后再试。</string>
+    <string name="update_install_permission_title">允许安装更新</string>
+    <string name="update_install_permission_message">Android 需要先允许 ANE 安装未知来源应用。授权后将自动打开系统安装界面。</string>
+    <string name="update_open_permission_settings">打开授权设置</string>
+    <string name="update_install_failed_title">无法打开安装器</string>
+    <string name="update_install_failed_message">系统中没有可用的安装器。安装包已保存在 ANE 的应用数据中。</string>
 
     <string name="tab_manager_title">标签页管理</string>
     <string name="tab_manager_close_page">返回文件管理器</string>

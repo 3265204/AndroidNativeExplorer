@@ -30,8 +30,8 @@ internal class PluginManagerDialog(
     private val originX: Float,
     private val originY: Float
 ) {
-    private val dark = host.getSharedPreferences("appearance", 0).getBoolean("dark", false)
-    private val theme = AneTheme.resolve(host, dark)
+    private val theme = AneTheme.resolve(host)
+    private val dark = theme.dark
     private val surface = theme.surface
     private val text = theme.text
     private val muted = theme.muted
