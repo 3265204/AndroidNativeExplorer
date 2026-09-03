@@ -47,17 +47,24 @@ class SharePreparationStoreTest {
     }
 
     @Test
-    fun `temporary archive is removed after receiver closes it`() {
+    fun `temporary archive expires after one day`() {
         val folder = temporary.newFolder("folder")
         File(folder, "item.txt").writeText("item")
         val store = SharePreparationStore(temporary.newFolder("share-temp"))
         val prepared = store.prepare(listOf(folder))
         val archive = prepared.files.single()
+        val session = requireNotNull(prepared.sessionDirectory)
 
-        store.removeAfterRead(archive)
+        session.setLastModified(1_000L)
+        store.cleanupExpired(now = 24L * 60 * 60 * 1000)
+
+        assertTrue(archive.exists())
+        assertTrue(session.exists())
+
+        store.cleanupExpired(now = 24L * 60 * 60 * 1000 + 1_000L)
 
         assertFalse(archive.exists())
-        assertFalse(prepared.sessionDirectory!!.exists())
+        assertFalse(session.exists())
         assertTrue(folder.exists())
     }
 }

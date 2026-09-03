@@ -39,13 +39,6 @@ internal class SharePreparationStore(private val rootDirectory: File) {
         }
     }
 
-    /** Called after a receiver closes a temporary archive; original shared files are never removed. */
-    fun removeAfterRead(file: File) {
-        val session = temporarySessionFor(file) ?: return
-        file.delete()
-        if (session.listFiles().isNullOrEmpty()) session.delete()
-    }
-
     fun removeSession(session: File?) {
         if (session == null || !isDirectChild(rootDirectory, session)) return
         session.deleteRecursively()
@@ -56,13 +49,6 @@ internal class SharePreparationStore(private val rootDirectory: File) {
             .filter(File::isDirectory)
             .filter { now - it.lastModified() >= maxAgeMillis }
             .forEach(File::deleteRecursively)
-    }
-
-    fun isTemporaryArchive(file: File): Boolean = temporarySessionFor(file) != null
-
-    private fun temporarySessionFor(file: File): File? {
-        val parent = file.parentFile ?: return null
-        return parent.takeIf { file.isFile && isDirectChild(rootDirectory, it) }
     }
 
     private fun zipSources(sources: List<File>, target: File): File {
@@ -147,6 +133,6 @@ internal class SharePreparationStore(private val rootDirectory: File) {
         const val DIRECTORY_NAME = "share-temp"
         private const val MULTI_ITEM_ARCHIVE_NAME = "shared-files.zip"
         private const val COPY_BUFFER_SIZE = 64 * 1024
-        private const val MAX_AGE_MILLIS = 7L * 24 * 60 * 60 * 1000
+        private const val MAX_AGE_MILLIS = 24L * 60 * 60 * 1000
     }
 }
