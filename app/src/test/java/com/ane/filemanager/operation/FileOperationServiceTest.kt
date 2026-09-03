@@ -126,6 +126,34 @@ class FileOperationServiceTest {
     }
 
     @Test
+    fun `move into the source folder itself is rejected before changing files`() {
+        val parent = temporary.newFolder("move-into-self")
+        val sourceFolder = File(parent, "folder").apply { mkdir() }
+        val sibling = File(parent, "sibling.txt").apply { writeText("content") }
+
+        val result = service.transfer(listOf(sibling, sourceFolder), sourceFolder, move = true)
+
+        assertTrue(result is FileResult.Failure)
+        assertEquals(FileFailure.MOVE_INTO_SELF, (result as FileResult.Failure).problem.failure)
+        assertTrue(sourceFolder.exists())
+        assertTrue(sibling.exists())
+        assertFalse(File(sourceFolder, sibling.name).exists())
+        assertFalse(File(sourceFolder, sourceFolder.name).exists())
+    }
+
+    @Test
+    fun `copy into a source descendant is rejected before changing files`() {
+        val sourceFolder = temporary.newFolder("copy-into-self")
+        val childFolder = File(sourceFolder, "child").apply { mkdir() }
+
+        val result = service.transfer(listOf(sourceFolder), childFolder, move = false)
+
+        assertTrue(result is FileResult.Failure)
+        assertEquals(FileFailure.COPY_INTO_SELF, (result as FileResult.Failure).problem.failure)
+        assertFalse(File(childFolder, sourceFolder.name).exists())
+    }
+
+    @Test
     fun `partial move retry only finishes deleting the source`() {
         val sourceDirectory = temporary.newFolder("partial-retry-source")
         val targetDirectory = temporary.newFolder("partial-retry-target")

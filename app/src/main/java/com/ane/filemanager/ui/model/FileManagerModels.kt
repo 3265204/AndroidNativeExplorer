@@ -72,6 +72,7 @@ internal data class RenderState(
     val dragX: Float,
     val dragY: Float,
     val dragCount: Int,
+    val dragSources: List<File>,
     val menuKind: MenuKind,
     val menuLayers: List<List<MenuAction>>,
     val menuX: Float,

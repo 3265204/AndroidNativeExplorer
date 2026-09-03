@@ -12,6 +12,7 @@ import android.graphics.RectF
 import android.graphics.Rect
 import android.os.SystemClock
 import com.ane.filemanager.R
+import com.ane.filemanager.operation.TransferTargetPolicy
 import com.ane.filemanager.plugin.api.PluginFileIcon
 import com.ane.filemanager.ui.model.FileHit
 import com.ane.filemanager.ui.model.LayoutMode
@@ -862,7 +863,8 @@ internal class FileManagerRenderer(
             if (targetRect.right >= contentLeft && targetRect.left <= contentRight) {
                 tabSlotHits += TabHit(index, RectF(targetRect))
             }
-            val dragTarget = state.dragging && rect.contains(state.dragX, state.dragY)
+            val dragTarget = state.dragging && rect.contains(state.dragX, state.dragY) &&
+                TransferTargetPolicy.accepts(state.dragSources, tab.directory)
             val tabBeingDragged = state.tabDragging && index == state.draggedTabIndex
             if (dragTarget || tabBeingDragged) {
                 paint.color = if (dragTarget) color("selected") else color("surface2")
@@ -960,7 +962,8 @@ internal class FileManagerRenderer(
             contentBottom(height, state.insets.bottom))
         if (state.dragging) {
             fileHits.firstOrNull {
-                metadata(it.file).directory && it.rect.contains(state.dragX, state.dragY)
+                metadata(it.file).directory && it.rect.contains(state.dragX, state.dragY) &&
+                    TransferTargetPolicy.accepts(state.dragSources, it.file)
             }?.let {
                 stroke.color = color("primary"); stroke.strokeWidth = dp(3f)
                 canvas.drawRoundRect(it.rect, dp(10f), dp(10f), stroke)

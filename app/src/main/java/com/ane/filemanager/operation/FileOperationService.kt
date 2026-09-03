@@ -140,6 +140,12 @@ internal class FileOperationService {
         skipped: Int = 0,
         partialMove: TransferRecord? = null
     ): FileResult<TransferBatch> {
+        TransferTargetPolicy.sourceNestedByTarget(sources, targetDirectory)?.let { source ->
+            return FileResult.Failure(FileProblem(
+                if (move) FileFailure.MOVE_INTO_SELF else FileFailure.COPY_INTO_SELF,
+                source.name
+            ))
+        }
         val records = completed.toMutableList()
         partialMove?.let { record ->
             val problem = finishPartialMove(record)

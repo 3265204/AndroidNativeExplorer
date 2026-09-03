@@ -24,6 +24,7 @@ import com.ane.filemanager.navigation.DockSessionController
 import com.ane.filemanager.navigation.DockSessionStore
 import com.ane.filemanager.operation.FileActionController
 import com.ane.filemanager.operation.FileTransactionService
+import com.ane.filemanager.operation.TransferTargetPolicy
 import com.ane.filemanager.pluginmanager.PluginRegistry
 import com.ane.filemanager.ui.appearance.AppearanceController
 import com.ane.filemanager.ui.directory.DirectoryLoader
@@ -326,6 +327,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val menuState = menu.renderState()
+        val dragSources = selection.dragFiles(downFile)
         renderer.draw(canvas, RenderState(
             tabs = tabs,
             activeTab = activeTab,
@@ -344,7 +346,8 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             draggedTabIndex = draggedTab?.let(tabs::indexOf) ?: -1,
             dragX = dragX,
             dragY = dragY,
-            dragCount = selection.dragFiles(downFile).size,
+            dragCount = dragSources.size,
+            dragSources = dragSources,
             menuKind = menuState.kind,
             menuLayers = menuState.layers,
             menuX = menuState.x,
@@ -919,7 +922,7 @@ internal class FileManagerView(private val host: MainActivity) : View(host) {
             else -> null
         }
         val sources = selection.dragFiles(downFile)
-        if (target == null) return
+        if (target == null || !TransferTargetPolicy.accepts(sources, target)) return
         fileActions.move(sources, target)
     }
 
