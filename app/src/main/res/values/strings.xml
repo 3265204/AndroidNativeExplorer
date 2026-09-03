@@ -18,6 +18,8 @@
     <string name="no_share_app">没有可用于分享文件的应用</string>
     <string name="choose_file_app">选择打开方式</string>
     <string name="share_file_chooser">分享文件</string>
+    <string name="preparing_share_archive">正在打包要分享的文件…</string>
+    <string name="share_archive_failed">无法打包要分享的文件</string>
     <string name="open_mode_title">打开模式</string>
     <string name="open_mode_message">选择“%1$s”的打开方式。选择“始终”后，ANE 会记住本次选中的应用。</string>
     <string name="open_mode_once">仅此一次</string>

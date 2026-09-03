@@ -7,9 +7,12 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
+import com.ane.filemanager.sharing.SharePreparationStore
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -20,6 +23,19 @@ class LocalFileProvider : ContentProvider() {
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         if (mode != "r") throw FileNotFoundException("Read only")
         val file = checkedFile(uri)
+        val appContext = context
+        if (appContext != null) {
+            val store = SharePreparationStore(
+                File(appContext.filesDir, SharePreparationStore.DIRECTORY_NAME)
+            )
+            if (store.isTemporaryArchive(file)) {
+                return ParcelFileDescriptor.open(
+                    file,
+                    ParcelFileDescriptor.MODE_READ_ONLY,
+                    Handler(Looper.getMainLooper())
+                ) { store.removeAfterRead(file) }
+            }
+        }
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 

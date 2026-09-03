@@ -17,6 +17,8 @@
     <string name="no_share_app">No app can share these files</string>
     <string name="choose_file_app">Choose an app</string>
     <string name="share_file_chooser">Share files</string>
+    <string name="preparing_share_archive">Packaging files for sharing…</string>
+    <string name="share_archive_failed">Could not package the files for sharing</string>
     <string name="open_mode_title">Open mode</string>
     <string name="open_mode_message">Choose how to open “%1$s”. Always remembers the app you select for this file type in ANE.</string>
     <string name="open_mode_once">Just once</string>

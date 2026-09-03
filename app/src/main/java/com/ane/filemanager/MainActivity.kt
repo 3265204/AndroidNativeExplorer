@@ -30,7 +30,8 @@ class MainActivity : Activity() {
     private lateinit var fileView: FileManagerView
     private var fullscreenOverlay: View? = null
     private var fullscreenOverlayBack: (() -> Unit)? = null
-    private val fileInteractions by lazy { FileInteractionService(this) }
+    private val fileInteractionsDelegate = lazy { FileInteractionService(this) }
+    private val fileInteractions by fileInteractionsDelegate
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(AppLanguage.wrap(base))
@@ -74,6 +75,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (fileInteractionsDelegate.isInitialized()) fileInteractions.close()
         if (::fileView.isInitialized) fileView.close()
         super.onDestroy()
     }

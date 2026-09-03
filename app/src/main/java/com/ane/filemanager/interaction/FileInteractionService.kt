@@ -12,13 +12,24 @@ import com.ane.filemanager.R
 import com.ane.filemanager.openwith.ChosenAppReceiver
 import com.ane.filemanager.openwith.OpenWithStore
 import com.ane.filemanager.provider.LocalFileProvider
+import com.ane.filemanager.sharing.SharePreparationStore
 import com.ane.filemanager.sharing.ShareMimeTypes
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Host business service for opening and sharing files outside ANE. */
 internal class FileInteractionService(private val activity: Activity) {
     private val chooserRequestCode = AtomicInteger(1)
+    private val closed = AtomicBoolean(false)
+    private val shareWorker = Executors.newSingleThreadExecutor { task -> Thread(task, "ane-share-preparation") }
+    private val shareStore = SharePreparationStore(File(activity.filesDir, SharePreparationStore.DIRECTORY_NAME))
+
+    init {
+        shareWorker.execute(shareStore::cleanupExpired)
+    }
 
     fun open(file: File, forceChooser: Boolean = false): Boolean {
         val extension = fileExtension(file)
@@ -41,7 +52,32 @@ internal class FileInteractionService(private val activity: Activity) {
     }
 
     fun share(files: List<File>): Boolean {
-        if (files.isEmpty() || files.any { !it.isFile }) return false
+        if (closed.get()) return false
+        if (files.isEmpty() || files.any { !it.exists() || (!it.isFile && !it.isDirectory) }) return false
+        if (files.size == 1 && files.single().isFile) return launchShare(files)
+        toast(R.string.preparing_share_archive)
+        return try {
+            shareWorker.execute {
+                val prepared = runCatching { shareStore.prepare(files) }
+                activity.runOnUiThread {
+                    val payload = prepared.getOrNull()
+                    if (closed.get() || payload == null || !launchShare(payload.files)) {
+                        shareStore.removeSession(payload?.sessionDirectory)
+                        if (!closed.get() && prepared.isFailure) toast(R.string.share_archive_failed)
+                    }
+                }
+            }
+            true
+        } catch (_: RejectedExecutionException) {
+            false
+        }
+    }
+
+    fun close() {
+        if (closed.compareAndSet(false, true)) shareWorker.shutdownNow()
+    }
+
+    private fun launchShare(files: List<File>): Boolean {
         val uris = ArrayList(files.map { LocalFileProvider.uriFor(activity, it) })
         val mimeTypes = files.map(::mimeType)
         val target = Intent(if (files.size == 1) Intent.ACTION_SEND else Intent.ACTION_SEND_MULTIPLE).apply {

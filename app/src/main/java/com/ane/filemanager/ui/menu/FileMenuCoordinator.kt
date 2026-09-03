@@ -96,9 +96,7 @@ internal class FileMenuCoordinator(
         if (selectedFiles.isNotEmpty()) {
             add(MenuAction(s(R.string.action_copy_selected)) { fileActions.copySelection(false) })
             add(MenuAction(s(R.string.action_cut_selected)) { fileActions.copySelection(true) })
-            if (selectedFiles.all(File::isFile)) {
-                add(MenuAction(s(R.string.action_share)) { host.shareFiles(selectedFiles) })
-            }
+            add(MenuAction(s(R.string.action_share)) { host.shareFiles(selectedFiles) })
             val tools = plugins.selectionActions(selectedFiles).map { action ->
                 MenuAction(action.label, run = action.run)
             }
@@ -172,7 +170,7 @@ internal class FileMenuCoordinator(
                     host.openFile(file, forceChooser = true)
                 })
             }
-            if (selectedFiles.isNotEmpty() && selectedFiles.all(File::isFile)) {
+            if (selectedFiles.isNotEmpty()) {
                 add(MenuAction(s(R.string.action_share)) { host.shareFiles(selectedFiles) })
             }
             add(MenuAction(s(R.string.action_copy)) { fileActions.copySelection(false) })
