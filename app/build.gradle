@@ -2,6 +2,14 @@ plugins {
     id 'com.android.application'
 }
 
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+def hasReleaseSigning = keystorePropertiesFile.exists()
+
+if (hasReleaseSigning) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
 android {
     namespace 'com.ane.filemanager'
     compileSdk 36
@@ -9,7 +17,7 @@ android {
 
     defaultConfig {
         applicationId 'com.ane.filemanager'
-        minSdk 23
+        minSdk 24
         targetSdk 35
         versionCode 4
         versionName '0.3.2'
@@ -26,6 +34,27 @@ android {
 
     buildFeatures {
         buildConfig true
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword rootProject.file(keystoreProperties['storePasswordFile'])
+                    .getText('UTF-8').trim()
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword rootProject.file(keystoreProperties['keyPasswordFile'])
+                    .getText('UTF-8').trim()
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
 
     // Each plugin owns its Android values beside its implementation. They are merged only at build time.

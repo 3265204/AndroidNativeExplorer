@@ -56,7 +56,7 @@ ANE（Android Native Explorer）是使用 Kotlin 编写的 Android 本地文件�
 - Android SDK Platform 36 和 Build Tools。
 - JDK 21（当前验证环境）；最低兼容版本以 Android Gradle Plugin 要求为准。
 - Gradle Wrapper 会自动下载 Gradle 9.4.1，无需全局安装 Gradle。
-- 调试设备需要 Android 6.0（API 23）或更高版本。
+- 调试设备需要 Android 7.0（API 24）或更高版本。
 
 项目当前构建配置：
 

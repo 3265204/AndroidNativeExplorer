@@ -55,7 +55,7 @@ Because of plugin permissions, do not install untrusted plugins.
 - Android SDK Platform 36 and Build Tools.
 - JDK 21 (current verified environment); the minimum compatible version follows the Android Gradle Plugin requirements.
 - Gradle Wrapper downloads Gradle 9.4.1 automatically; no global Gradle install required.
-- Debugging devices need Android 6.0 (API 23) or higher.
+- Debugging devices need Android 7.0 (API 24) or higher.
 
 Current build configuration:
 
