@@ -83,7 +83,7 @@ internal class FileManagerView(
         doubleClickTimeoutMs = GestureTiming.doubleTapTimeoutMs,
         onSelectionChanged = onSelectionChanged
     )
-    private val directoryLoader = DirectoryLoader { directory, loaded ->
+    private val directoryLoader = DirectoryLoader(com.ane.filemanager.ui.directory.RecentFiles(context)::list) { directory, loaded ->
         post {
             if (!::dock.isInitialized || !callbacks.sameDirectory(currentDirectory, directory)) return@post
             renderer.onDirectoryContentsChanged()
@@ -134,7 +134,7 @@ internal class FileManagerView(
         contentDescription = host.getString(R.string.file_manager_description)
         setLayerType(LAYER_TYPE_HARDWARE, null)
         val root = storageRoot
-        val storageLabel = onboardingWorkspace?.rootLabel ?: s(R.string.storage)
+        val storageLabel = onboardingWorkspace?.rootLabel ?: s(R.string.internal_storage)
         val defaultTabs = if (onboardingWorkspace != null) {
             mutableListOf(
                 BrowserTab(onboardingWorkspace.rootLabel, root, true),
@@ -142,7 +142,10 @@ internal class FileManagerView(
                 BrowserTab(onboardingWorkspace.copyTargetLabel, onboardingWorkspace.copyTarget, true)
             )
         } else {
-            mutableListOf(BrowserTab(storageLabel, root, true)).apply {
+            mutableListOf(
+                BrowserTab(s(R.string.recent_added), com.ane.filemanager.navigation.RecentLocation.directory, true, fixed = true),
+                BrowserTab(storageLabel, root, true, fixed = true)
+            ).apply {
                 listOf(
                     "Download" to R.string.downloads,
                     "Documents" to R.string.documents,
@@ -218,9 +221,36 @@ internal class FileManagerView(
         refresh()
     }
 
+    private var storageReceiverRegistered = false
+    private val storageReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            refresh()
+        }
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (!storageReceiverRegistered && onboardingWorkspace == null) {
+            val filter = android.content.IntentFilter().apply {
+                addAction(android.content.Intent.ACTION_MEDIA_MOUNTED)
+                addAction(android.content.Intent.ACTION_MEDIA_UNMOUNTED)
+                addAction(android.content.Intent.ACTION_MEDIA_REMOVED)
+                addAction(android.content.Intent.ACTION_MEDIA_BAD_REMOVAL)
+                addDataScheme("file")
+            }
+            if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(storageReceiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+            else context.registerReceiver(storageReceiver, filter)
+            storageReceiverRegistered = true
+        }
         requestFocus()
+    }
+
+    override fun onDetachedFromWindow() {
+        if (storageReceiverRegistered) {
+            context.unregisterReceiver(storageReceiver)
+            storageReceiverRegistered = false
+        }
+        super.onDetachedFromWindow()
     }
 
     fun close() {
@@ -244,6 +274,8 @@ internal class FileManagerView(
     fun selectedFiles(): List<File> = selection.files().filter(File::isFile)
 
     fun pickerDirectory(): File = currentDirectory
+
+    fun isVirtualDirectory(): Boolean = com.ane.filemanager.navigation.RecentLocation.isRecent(currentDirectory)
 
     internal fun chooseOnboardingLayout(mode: LayoutMode) {
         appearance.previewLayoutMode(mode)
@@ -283,6 +315,15 @@ internal class FileManagerView(
 
     fun refresh() {
         if (tabs.isEmpty()) return
+        if (onboardingWorkspace == null) {
+            val locations = com.ane.filemanager.storage.StorageLocations.mounted(context)
+                .filter { !callbacks.sameDirectory(it.directory, storageRoot) }
+            dock.syncExternalTabs(locations.sortedBy { it.directory.path }.mapIndexed { index, location ->
+                BrowserTab(s(R.string.external_storage_number, index + 1), location.directory, true, fixed = true, external = true)
+            }, storageRoot)
+            if (!com.ane.filemanager.navigation.RecentLocation.isRecent(currentDirectory) &&
+                !currentDirectory.isDirectory) dock.switchTo(dock.indexOfDirectory(storageRoot))
+        }
         val directory = currentDirectory
         val changingDirectory = displayedDirectoryPath != directory.absolutePath
         directoryTransitioning = changingDirectory
@@ -315,7 +356,7 @@ internal class FileManagerView(
             selected = selection.paths,
             multiSelect = selection.multiSelect,
             canAccessStorage = onboardingWorkspace != null || host.hasStorageAccess(),
-            canReadDirectory = currentDirectory.canRead(),
+            canReadDirectory = com.ane.filemanager.navigation.RecentLocation.isRecent(currentDirectory) || currentDirectory.canRead(),
             scrollY = scrollY,
             dockScrollX = dockScrollX,
             dockEditing = dockEditing,

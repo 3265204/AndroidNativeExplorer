@@ -194,17 +194,17 @@ internal class TabManagerDialog(
                         R.string.tab_manager_temporary
                     }), false), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(7) })
                 })
-                addView(label(tab.directory.absolutePath, 12.5f, theme.muted).apply {
+                addView(label(if (com.ane.filemanager.navigation.RecentLocation.isRecent(tab.directory)) tab.label else tab.directory.absolutePath, 12.5f, theme.muted).apply {
                     maxLines = 2
                     setPadding(0, dp(7), 0, dp(10))
                 })
                 addView(LinearLayout(host).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    addDistributedAction(host.getString(R.string.tab_manager_rename)) {
+                    if (!dock.isFixed(index)) addDistributedAction(host.getString(R.string.tab_manager_rename)) {
                         rename(index, tab)
                     }
-                    if (index > 0) {
+                    if (!dock.isFixed(index)) {
                         addDistributedAction(host.getString(R.string.tab_manager_change_directory)) {
                             changeDirectory(index, tab)
                         }
@@ -251,7 +251,7 @@ internal class TabManagerDialog(
 
     private fun beginCardDrag(tab: BrowserTab, root: View): Boolean {
         val index = dock.tabs.indexOfFirst { it === tab }
-        if (index <= 0) return false
+        if (dock.isFixed(index)) return false
         selectedTab = tab
         dragTargetTab = tab
         lastClickedTab = null
@@ -271,7 +271,7 @@ internal class TabManagerDialog(
     private fun handleCardDrag(event: DragEvent): Boolean {
         val dragged = event.localState as? BrowserTab ?: return false
         return when (event.action) {
-            DragEvent.ACTION_DRAG_STARTED -> dock.tabs.indexOfFirst { it === dragged } > 0
+            DragEvent.ACTION_DRAG_STARTED -> dock.tabs.indexOfFirst { it === dragged }.let { it >= 0 && !dock.isFixed(it) }
             DragEvent.ACTION_DRAG_LOCATION -> {
                 autoScrollCards(event.y)
                 val target = cardBindings.minByOrNull { binding ->
@@ -370,7 +370,7 @@ internal class TabManagerDialog(
     }
 
     private fun togglePinned(index: Int) {
-        if (index !in dock.tabs.indices || index == 0) return
+        if (index !in dock.tabs.indices || dock.isFixed(index)) return
         if (dock.tabs[index].pinned) dock.unpin(index) else dock.pin(index)
         onTabsChanged()
         rebuild()
@@ -388,7 +388,7 @@ internal class TabManagerDialog(
     }
 
     private fun changeDirectory(index: Int, tab: BrowserTab) {
-        if (index == 0 || dock.tabs.getOrNull(index) !== tab) return
+        if (dock.isFixed(index) || dock.tabs.getOrNull(index) !== tab) return
         AneDialog.input(
             activity = host,
             title = host.getString(R.string.tab_manager_directory_title),

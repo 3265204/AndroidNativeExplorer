@@ -300,7 +300,10 @@ class MainActivity : Activity() {
             isEnabled = selectsDirectory
             text = getString(if (selectsDirectory) R.string.picker_select_folder else R.string.picker_select)
             setOnClickListener {
-                if (selectsDirectory) returnPickedDirectory(fileView.pickerDirectory())
+                if (selectsDirectory) {
+                    if (fileView.isVirtualDirectory()) toast(getString(R.string.recent_read_only))
+                    else returnPickedDirectory(fileView.pickerDirectory())
+                }
                 else returnPickedFiles(fileView.selectedFiles())
             }
         }

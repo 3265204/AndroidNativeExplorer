@@ -13,6 +13,7 @@ internal data class RestoredDockSession(
 
 /** Durable dock state used across process death and in-place application updates. */
 internal class DockSessionStore(context: Context) {
+    private val contextLabel = context.getString(com.ane.filemanager.R.string.recent_added)
     private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
     fun restore(storageRoot: File, storageLabel: String, labelFor: (File) -> String): RestoredDockSession? {
@@ -25,9 +26,10 @@ internal class DockSessionStore(context: Context) {
             val restored = mutableListOf<BrowserTab>()
             val knownPaths = mutableSetOf<String>()
 
-            // Storage is an invariant: it is always present, fixed and leftmost.
+            // Restore the permanent recent/internal-storage prefix before user locations.
             val canonicalRoot = canonicalPath(storageRoot)
-            restored += BrowserTab(storageLabel, storageRoot, true)
+            restored += BrowserTab(contextLabel, RecentLocation.directory, true, fixed = true)
+            restored += BrowserTab(storageLabel, storageRoot, true, fixed = true)
             knownPaths += canonicalRoot
 
             for (index in 0 until savedTabs.length()) {
@@ -68,7 +70,7 @@ internal class DockSessionStore(context: Context) {
     fun save(tabs: List<BrowserTab>, activeIndex: Int, durable: Boolean = false) {
         if (tabs.isEmpty()) return
         val savedTabs = JSONArray()
-        tabs.forEach { tab ->
+        tabs.filter { !it.external && !RecentLocation.isRecent(it.directory) }.forEach { tab ->
             savedTabs.put(JSONObject().apply {
                 put("label", tab.label)
                 put("path", canonicalPath(tab.directory))

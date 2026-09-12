@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** Lists and sorts one directory at a time without blocking the View's UI thread. */
 internal class DirectoryLoader(
+    private val recentFiles: ((Boolean) -> List<File>)? = null,
     private val onLoaded: (directory: File, files: List<File>) -> Unit
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
@@ -29,11 +30,12 @@ internal class DirectoryLoader(
             request?.cancel()
             request = scope.launch {
                 runInterruptible {
-                    val listed = directory.listFiles()?.filter {
+                    val recent = com.ane.filemanager.navigation.RecentLocation.isRecent(directory)
+                    val listed = if (recent) recentFiles?.invoke(showHidden).orEmpty() else directory.listFiles()?.filter {
                         showHidden || !it.name.startsWith('.')
                     }.orEmpty()
                     ensureActive()
-                    val sorted = sorter(listed)
+                    val sorted = if (recent) listed else sorter(listed)
                     ensureActive()
                     if (!closed.get() && generation.get() == requestGeneration) {
                         onLoaded(directory, sorted)

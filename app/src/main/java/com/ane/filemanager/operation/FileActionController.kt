@@ -50,6 +50,10 @@ internal class FileActionController(
     }
 
     fun paste() {
+        if (com.ane.filemanager.navigation.RecentLocation.isRecent(currentDirectory())) {
+            host.toast(s(R.string.recent_read_only))
+            return
+        }
         val sources = clipboard.filter(File::exists)
         if (sources.isEmpty()) {
             clipboard = emptyList()
@@ -70,6 +74,10 @@ internal class FileActionController(
     }
 
     fun create(folder: Boolean) {
+        if (com.ane.filemanager.navigation.RecentLocation.isRecent(currentDirectory())) {
+            host.toast(s(R.string.recent_read_only))
+            return
+        }
         val initial = s(if (folder) R.string.default_new_folder else R.string.default_new_file)
         host.promptName(s(if (folder) R.string.action_new_folder else R.string.dialog_new_empty_file), initial) { name ->
             when (val result = files.create(currentDirectory(), name, folder)) {

@@ -266,4 +266,8 @@
     <string name="error_partial_move">文件已复制，但无法删除原文件“%1$s”</string>
     <string name="error_unknown">文件操作失败</string>
     <string name="error_path_not_found">路径不存在或无法访问</string>
+    <string name="recent_added">最近添加</string>
+    <string name="recent_read_only">请先进入实际文件夹，再新建或粘贴文件</string>
+    <string name="internal_storage">内部存储</string>
+    <string name="external_storage_number">外部存储%1$d</string>
 </resources>

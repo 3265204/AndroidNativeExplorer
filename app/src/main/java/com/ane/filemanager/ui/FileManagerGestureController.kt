@@ -329,7 +329,7 @@ internal class FileManagerGestureController(
                 when {
                     draggedTab != null -> {
                         val source = tabs.indexOf(draggedTab)
-                        if (source > 0) {
+                        if (source >= 0 && !dock.isFixed(source)) {
                             tabDragging = true
                             reorderDraggedTab(x)
                         }
@@ -504,7 +504,7 @@ internal class FileManagerGestureController(
             val tab = draggedTab ?: return
             val from = tabs.indexOf(tab)
             val to = renderer.tabSlotHits.lastOrNull { it.rect.contains(x, dragY) }?.index ?: return
-            if (from <= 0 || to == from) return
+            if (from < 0 || dock.isFixed(from) || to == from) return
             val starts = renderer.tabVisualStarts()
             val movedTo = dock.moveTab(from, to)
             if (movedTo != from) {

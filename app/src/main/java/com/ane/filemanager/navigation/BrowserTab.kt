@@ -7,5 +7,7 @@ internal data class BrowserTab(
     var label: String,
     var directory: File,
     var pinned: Boolean = false,
-    val history: ArrayDeque<File> = ArrayDeque()
+    val history: ArrayDeque<File> = ArrayDeque(),
+    val fixed: Boolean = false,
+    val external: Boolean = false
 )

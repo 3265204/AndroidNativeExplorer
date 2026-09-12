@@ -262,4 +262,8 @@
     <string name="error_partial_move">The file was copied, but the original “%1$s” could not be deleted</string>
     <string name="error_unknown">File operation failed</string>
     <string name="error_path_not_found">Path not found or inaccessible</string>
+    <string name="recent_added">Recently added</string>
+    <string name="recent_read_only">Open a real folder to create or paste files</string>
+    <string name="internal_storage">Internal storage</string>
+    <string name="external_storage_number">External storage %1$d</string>
 </resources>

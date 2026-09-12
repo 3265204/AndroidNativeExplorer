@@ -51,7 +51,7 @@ internal class TopBarRenderer(private val drawing: RenderDrawingContext) {
         )
         val title = if (state.multiSelect) {
             drawing.context.getString(R.string.multi_select_count, state.selected.size)
-        } else state.addressOverride ?: tab.directory.absolutePath
+        } else state.addressOverride ?: if (com.ane.filemanager.navigation.RecentLocation.isRecent(tab.directory)) tab.label else tab.directory.absolutePath
         val verticalPad = dp(8f)
         val sortX = drawing.contentRight - dp(29f)
         val addressRight = (drawing.contentRight - dp(62f)).coerceAtLeast(drawing.contentLeft)

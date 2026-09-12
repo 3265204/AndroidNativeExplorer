@@ -14,6 +14,21 @@ internal class DockSessionController(
     var activeIndex = 0
         private set
 
+    fun syncExternalTabs(locations: List<BrowserTab>, fallback: File) {
+        val active = currentTab
+        val externalTabs = locations.map { location ->
+            tabs.firstOrNull { it.external && same(it.directory, location.directory) }
+                ?.apply { label = location.label } ?: location
+        }
+        tabs.removeAll { tab -> tab.external || locations.any { same(it.directory, tab.directory) } }
+        val insertion = tabs.indexOfLast { it.fixed }.coerceAtLeast(0) + 1
+        tabs.addAll(insertion, externalTabs)
+        activeIndex = tabs.indexOfFirst { it === active }.takeIf { it >= 0 }
+            ?: find(fallback).coerceAtLeast(0)
+    }
+
+    fun isFixed(index: Int) = index <= 0 || tabs.getOrNull(index)?.fixed == true
+
     val currentTab get() = tabs[activeIndex]
     val currentDirectory get() = currentTab.directory
 
@@ -99,8 +114,8 @@ internal class DockSessionController(
     }
 
     fun unpin(index: Int) {
-        // Storage is the permanent anchor and must remain fixed at index zero.
-        if (index !in tabs.indices || index == 0 || !tabs[index].pinned) return
+        // System locations cannot be unpinned.
+        if (index !in tabs.indices || isFixed(index) || !tabs[index].pinned) return
         val active = currentTab
         val tab = tabs.removeAt(index).apply { pinned = false }
         tabs += tab
@@ -143,7 +158,7 @@ internal class DockSessionController(
     }
 
     fun rename(index: Int, label: String) {
-        if (index in tabs.indices) {
+        if (index in tabs.indices && !isFixed(index)) {
             tabs[index].label = label
             onChanged()
         }
@@ -153,7 +168,7 @@ internal class DockSessionController(
 
     /** Rebinds one tab to a different readable directory without keeping stale back history. */
     fun changeDirectory(index: Int, directory: File): Boolean {
-        if (index !in tabs.indices || index == 0 || !directory.isDirectory || !directory.canRead()) return false
+        if (index !in tabs.indices || isFixed(index) || !directory.isDirectory || !directory.canRead()) return false
         val existing = find(directory)
         if (existing >= 0 && existing != index) return false
         val tab = tabs[index]
@@ -164,10 +179,11 @@ internal class DockSessionController(
         return true
     }
 
-    /** Reorders tabs while keeping the pinned storage tab locked at index zero. */
+    /** Reorders user tabs after the fixed system locations. */
     fun moveTab(fromIndex: Int, toIndex: Int): Int {
-        if (fromIndex !in tabs.indices || fromIndex == 0 || tabs.size < 2) return fromIndex
-        val destination = toIndex.coerceIn(1, tabs.lastIndex)
+        if (fromIndex !in tabs.indices || isFixed(fromIndex) || tabs.size < 2) return fromIndex
+        if (tabs.all { it.fixed }) return fromIndex
+        val destination = toIndex.coerceIn(tabs.indexOfLast { it.fixed }.coerceAtLeast(0) + 1, tabs.lastIndex)
         if (destination == fromIndex) return fromIndex
         val active = currentTab
         val moving = tabs.removeAt(fromIndex)
