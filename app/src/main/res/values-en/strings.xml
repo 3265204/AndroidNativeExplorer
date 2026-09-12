@@ -126,7 +126,7 @@
     <string name="settings_updates_hint">Manage version checks and automatic updates</string>
     <string name="settings_check_updates_title">Check for updates</string>
     <string name="settings_automatic_updates_title">Automatic updates</string>
-    <string name="settings_automatic_updates_hint">Check and download new versions at startup (off by default)</string>
+    <string name="settings_automatic_updates_hint">Check and download new versions at startup</string>
     <string name="settings_storage_permission_hint">Open Android storage access settings</string>
     <string name="settings_value_sp">%1$d sp</string>
     <string name="settings_value_dp">%1$d dp</string>
@@ -262,4 +262,8 @@
     <string name="error_partial_move">The file was copied, but the original “%1$s” could not be deleted</string>
     <string name="error_unknown">File operation failed</string>
     <string name="error_path_not_found">Path not found or inaccessible</string>
+    <string name="recent_added">Recently added</string>
+    <string name="recent_read_only">Open a real folder to create or paste files</string>
+    <string name="internal_storage">Internal storage</string>
+    <string name="external_storage_number">External storage %1$d</string>
 </resources>

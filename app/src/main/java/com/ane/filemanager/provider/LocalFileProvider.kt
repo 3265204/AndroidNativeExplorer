@@ -55,9 +55,9 @@ class LocalFileProvider : ContentProvider() {
 
     private fun checkedFile(uri: Uri): File {
         val file = File(uri.path ?: throw FileNotFoundException()).canonicalFile
-        val roots = listOfNotNull(
+        val roots = (context?.let { com.ane.filemanager.storage.StorageLocations.mounted(it).map { location -> location.directory } }.orEmpty() + listOfNotNull(
             Environment.getExternalStorageDirectory(), context?.filesDir, context?.getExternalFilesDir(null)
-        ).map { it.canonicalFile }
+        )).map { it.canonicalFile }
         if (roots.none { file == it || file.path.startsWith(it.path + File.separator) } || !file.isFile) {
             throw FileNotFoundException("Path not allowed")
         }

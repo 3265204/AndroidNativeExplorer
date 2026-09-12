@@ -24,19 +24,20 @@ class LocalDocumentsProvider : DocumentsProvider() {
 
     override fun queryRoots(projection: Array<out String>?): Cursor {
         val columns = projection ?: DEFAULT_ROOT_PROJECTION
-        return MatrixCursor(columns, 1).apply {
-            newRow().addValues(columns) { column ->
-                when (column) {
-                    DocumentsContract.Root.COLUMN_ROOT_ID -> ROOT_ID
-                    DocumentsContract.Root.COLUMN_DOCUMENT_ID -> ROOT_DOCUMENT_ID
-                    DocumentsContract.Root.COLUMN_TITLE -> context?.getString(R.string.app_name) ?: "ANE"
-                    DocumentsContract.Root.COLUMN_SUMMARY -> context?.getString(R.string.storage)
-                    DocumentsContract.Root.COLUMN_FLAGS ->
-                        DocumentsContract.Root.FLAG_LOCAL_ONLY or DocumentsContract.Root.FLAG_SUPPORTS_IS_CHILD
-                    DocumentsContract.Root.COLUMN_ICON -> R.mipmap.ic_launcher
-                    DocumentsContract.Root.COLUMN_MIME_TYPES -> "*/*"
-                    DocumentsContract.Root.COLUMN_AVAILABLE_BYTES -> storageRoot.usableSpace
-                    else -> null
+        return MatrixCursor(columns).apply {
+            com.ane.filemanager.storage.StorageLocations.mounted(requireNotNull(context)).forEach { location ->
+                newRow().addValues(columns) { column ->
+                    when (column) {
+                        DocumentsContract.Root.COLUMN_ROOT_ID -> location.directory.path
+                        DocumentsContract.Root.COLUMN_DOCUMENT_ID -> documentIdFor(requireNotNull(context), location.directory)
+                        DocumentsContract.Root.COLUMN_TITLE -> location.label
+                        DocumentsContract.Root.COLUMN_SUMMARY -> context?.getString(R.string.app_name)
+                        DocumentsContract.Root.COLUMN_FLAGS -> DocumentsContract.Root.FLAG_LOCAL_ONLY or DocumentsContract.Root.FLAG_SUPPORTS_IS_CHILD
+                        DocumentsContract.Root.COLUMN_ICON -> R.mipmap.ic_launcher
+                        DocumentsContract.Root.COLUMN_MIME_TYPES -> "*/*"
+                        DocumentsContract.Root.COLUMN_AVAILABLE_BYTES -> location.directory.usableSpace
+                        else -> null
+                    }
                 }
             }
         }
@@ -59,7 +60,7 @@ class LocalDocumentsProvider : DocumentsProvider() {
         if (!parent.isDirectory) throw FileNotFoundException("Not a directory: $parentDocumentId")
         return MatrixCursor(columns).apply {
             parent.listFiles().orEmpty().forEach { child ->
-                runCatching { include(documentIdFor(storageRoot, child), child.canonicalFile) }
+                runCatching { include(documentIdFor(requireNotNull(context), child), child.canonicalFile) }
             }
         }
     }
@@ -82,6 +83,16 @@ class LocalDocumentsProvider : DocumentsProvider() {
     }
 
     private fun fileFor(documentId: String): File {
+        if (documentId.startsWith("volume:")) {
+            val parts = documentId.removePrefix("volume:").split(':', limit = 2)
+            val root = com.ane.filemanager.storage.StorageLocations.mounted(requireNotNull(context))
+                .firstOrNull { it.directory.name == parts[0] }?.directory
+                ?: throw FileNotFoundException("Volume unavailable")
+            val file = File(root, parts.getOrElse(1) { "" }).canonicalFile
+            if ((file != root && !file.path.startsWith(root.path + File.separator)) || !file.exists())
+                throw FileNotFoundException("Path outside volume or missing")
+            return file
+        }
         val file = when (documentId) {
             ROOT_DOCUMENT_ID -> storageRoot
             else -> File(storageRoot, documentId).canonicalFile
@@ -145,22 +156,24 @@ class LocalDocumentsProvider : DocumentsProvider() {
         )
 
         fun uriFor(context: Context, file: File): Uri {
-            val root = Environment.getExternalStorageDirectory().canonicalFile
-            val documentId = documentIdFor(root, file)
+            val documentId = documentIdFor(context, file)
             return DocumentsContract.buildDocumentUri("${context.packageName}.documents", documentId)
         }
 
         fun treeUriFor(context: Context, directory: File): Uri {
-            val root = Environment.getExternalStorageDirectory().canonicalFile
-            val documentId = documentIdFor(root, directory)
+            val documentId = documentIdFor(context, directory)
             return DocumentsContract.buildTreeDocumentUri("${context.packageName}.documents", documentId)
         }
 
-        private fun documentIdFor(root: File, file: File): String {
+        private fun documentIdFor(context: Context, file: File): String {
+            val root = Environment.getExternalStorageDirectory().canonicalFile
             val canonical = file.canonicalFile
             if (canonical == root) return ROOT_DOCUMENT_ID
             if (!canonical.path.startsWith(root.path + File.separator)) {
-                throw FileNotFoundException("Path outside storage root")
+                val volume = com.ane.filemanager.storage.StorageLocations.mounted(context)
+                    .firstOrNull { canonical == it.directory || canonical.path.startsWith(it.directory.path + File.separator) }
+                    ?: throw FileNotFoundException("Path outside storage root")
+                return "volume:${volume.directory.name}:" + canonical.path.removePrefix(volume.directory.path).trimStart('/')
             }
             return canonical.path.removePrefix(root.path + File.separator)
         }

@@ -112,7 +112,7 @@ internal class FileMenuCoordinator(
 
     private fun directoryFabActions() = buildList {
         add(MenuAction(s(R.string.action_enter_multi_select)) { selection.enterMultiSelect() })
-        if (fileActions.hasClipboard) {
+        if (fileActions.hasClipboard && !com.ane.filemanager.navigation.RecentLocation.isRecent(dock.currentDirectory)) {
             add(MenuAction(s(R.string.action_paste_here)) { fileActions.paste() })
         }
         if (fileActions.canUndo) {
@@ -121,6 +121,7 @@ internal class FileMenuCoordinator(
         if (fileActions.canRedo) {
             add(MenuAction(s(R.string.action_redo), run = fileActions::redoLastOperation))
         }
+        if (com.ane.filemanager.navigation.RecentLocation.isRecent(dock.currentDirectory)) return@buildList
         add(MenuAction(
             label = s(R.string.action_create),
             children = createActions()
@@ -239,7 +240,7 @@ internal class FileMenuCoordinator(
                 label = s(R.string.setting_tab_manager),
                 run = beginDockManagement
             ))
-            if (index > 0) add(MenuAction(s(if (tab.pinned) {
+            if (!dock.isFixed(index)) add(MenuAction(s(if (tab.pinned) {
                 R.string.action_unpin_tab
             } else {
                 R.string.action_pin_tab
@@ -249,7 +250,7 @@ internal class FileMenuCoordinator(
                 }
                 invalidate()
             })
-            add(MenuAction(s(R.string.action_rename_tab)) { renameTab(index) })
+            if (!dock.isFixed(index)) add(MenuAction(s(R.string.action_rename_tab)) { renameTab(index) })
             if (!tab.pinned) add(MenuAction(s(R.string.action_close_tab)) { closeTemporaryTab(index) })
         }
         menu.open(MenuKind.TAB, actions, x, y - dp(actions.size * 48f + 16f), x, y)

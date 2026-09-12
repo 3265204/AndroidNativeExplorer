@@ -10,7 +10,8 @@ internal object TransferTargetPolicy {
         }
 
     fun accepts(sources: Collection<File>, targetDirectory: File): Boolean =
-        sourceNestedByTarget(sources, targetDirectory) == null
+        !com.ane.filemanager.navigation.RecentLocation.isRecent(targetDirectory) &&
+            sourceNestedByTarget(sources, targetDirectory) == null
 
     private fun isSameOrInside(candidate: File, possibleParent: File): Boolean {
         val candidatePath = normalizedPath(candidate)

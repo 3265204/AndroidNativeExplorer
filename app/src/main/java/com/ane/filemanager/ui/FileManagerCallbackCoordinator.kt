@@ -30,7 +30,7 @@ internal class FileManagerCallbackCoordinator(private val view: FileManagerView)
     fun removeManagedTab(tab: BrowserTab) {
         with(view) {
             val index = tabs.indexOfFirst { it === tab }
-            if (index <= 0) return
+            if (dock.isFixed(index)) return
             if (tab.pinned) {
                 confirmManagedTabUnpin(tab)
                 return
@@ -98,6 +98,7 @@ internal class FileManagerCallbackCoordinator(private val view: FileManagerView)
     }
 
     fun navigateUp() {
+        if (com.ane.filemanager.navigation.RecentLocation.isRecent(view.currentDirectory)) return
         view.currentDirectory.parentFile?.let(::navigateTo)
     }
 
@@ -265,7 +266,7 @@ internal class FileManagerCallbackCoordinator(private val view: FileManagerView)
                     AneDialogAction(s(R.string.dialog_cancel)),
                     AneDialogAction(s(R.string.dock_unpin_confirm_action), primary = true) {
                         val index = tabs.indexOfFirst { it === tab }
-                        if (index > 0 && tab.pinned) {
+                        if (!dock.isFixed(index) && tab.pinned) {
                             val starts = renderer.tabVisualStarts()
                             dock.unpin(index)
                             dockMotion.reorderFrom(starts)
@@ -282,7 +283,9 @@ internal class FileManagerCallbackCoordinator(private val view: FileManagerView)
     }
 
     private fun parentForSystemBack(): File? {
-        if (sameDirectory(view.currentDirectory, view.storageRoot)) return null
+        if (com.ane.filemanager.navigation.RecentLocation.isRecent(view.currentDirectory) ||
+            sameDirectory(view.currentDirectory, view.storageRoot) ||
+            view.tabs.any { it.external && sameDirectory(it.directory, view.currentDirectory) }) return null
         return view.currentDirectory.parentFile?.takeIf { it.isDirectory && it.canRead() }
     }
 

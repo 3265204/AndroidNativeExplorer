@@ -8,13 +8,15 @@
 ./gradlew :app:assembleDebug
 ```
 
+此时可以被编译成软件。
+
 需要 Android 静态检查时运行：
 
 ```powershell
 ./gradlew :app:lintDebug
 ```
 
-APK 输出：
+APK 输出位置：
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk

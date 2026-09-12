@@ -26,3 +26,11 @@ jobs:
 
       - name: Test, lint, and assemble
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANE-PR-test-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7

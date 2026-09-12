@@ -41,7 +41,7 @@ internal class DockBarRenderer(private val drawing: RenderDrawingContext) {
         val maxTabWidth = max(minTabWidth, min(dp(220f), viewportWidth * .72f))
         val widths = state.tabs.map { tab ->
             drawing.textWidth(tab.label, 12.5f, false)
-                .plus(dp(if (state.dockEditing) 54f else 36f))
+                .plus(dp(if (state.dockEditing && !tab.fixed) 54f else 36f))
                 .coerceIn(minTabWidth, maxTabWidth)
         }.toMutableList()
         val measuredWidth = widths.sum()
@@ -105,7 +105,7 @@ internal class DockBarRenderer(private val drawing: RenderDrawingContext) {
                     canvas.drawRoundRect(highlight, dp(10f), dp(10f), stroke)
                 }
             }
-            val labelRightPadding = if (state.dockEditing && index > 0) 29f else 13f
+            val labelRightPadding = if (state.dockEditing && index > 0 && !tab.fixed) 29f else 13f
             drawing.overflow.draw(
                 canvas,
                 drawing.overflow.tabKey(index),
@@ -125,7 +125,7 @@ internal class DockBarRenderer(private val drawing: RenderDrawingContext) {
                 index == state.activeTab,
                 index == state.activeTab || dragTarget || tabBeingDragged
             )
-            if (state.dockEditing && index > 0) drawTabManagementButton(canvas, index, rect)
+            if (state.dockEditing && index > 0 && !tab.fixed) drawTabManagementButton(canvas, index, rect)
         }
         canvas.restore()
     }

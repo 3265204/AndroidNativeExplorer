@@ -111,6 +111,76 @@ class DockSessionControllerTest {
         assertEquals(root, controller.tabs.first().directory)
     }
 
+    @Test
+    fun `recent and storage remain fixed before user tabs`() {
+        val root = File("/storage/emulated/0")
+        val work = File(root, "Work")
+        val controller = controller(root, listOf(
+            BrowserTab("Recent", RecentLocation.directory, true, fixed = true),
+            BrowserTab("Internal", root, true, fixed = true),
+            BrowserTab("Work", work)
+        ), root)
+        controller.unpin(1)
+        controller.rename(0, "Changed")
+        assertEquals(1, controller.moveTab(1, 2))
+        assertEquals(2, controller.moveTab(2, 0))
+        assertEquals("Recent", controller.tabs[0].label)
+        assertTrue(controller.tabs[1].pinned)
+        assertFalse(controller.close(0))
+        controller.switchTo(0)
+        controller.navigateTo(work)
+        assertEquals(RecentLocation.directory, controller.tabs[0].directory)
+        assertEquals(work, controller.currentDirectory)
+    }
+
+    @Test
+    fun `volume refresh keeps active tab and falls back when active volume is removed`() {
+        val root = File("/storage/emulated/0")
+        val work = File(root, "Work")
+        val volume = BrowserTab("External 1", File("/storage/ABCD"), true, fixed = true, external = true)
+        val controller = controller(root, listOf(
+            BrowserTab("Recent", RecentLocation.directory, true, fixed = true),
+            BrowserTab("Internal", root, true, fixed = true),
+            BrowserTab("Work", work)
+        ), work)
+        controller.syncExternalTabs(listOf(volume), root)
+        assertEquals(volume.directory, controller.tabs[2].directory)
+        assertEquals(work, controller.currentDirectory)
+        controller.syncExternalTabs(emptyList(), root)
+        assertEquals(work, controller.currentDirectory)
+        controller.syncExternalTabs(listOf(volume), root)
+        controller.switchTo(2)
+        controller.syncExternalTabs(emptyList(), root)
+        assertEquals(root, controller.currentDirectory)
+    }
+
+    @Test
+    fun `deleted pinned folder and descendants are removed and active location falls back`() {
+        val root = Files.createTempDirectory("ane-prune").toFile()
+        try {
+            val folder = File(root, "parent").apply { mkdirs() }
+            val child = File(folder, "child").apply { mkdirs() }
+            val kept = File(root, "kept").apply { mkdirs() }
+            val controller = controller(root, listOf(
+                BrowserTab("Recent", RecentLocation.directory, true, fixed = true),
+                BrowserTab("Internal", root, true, fixed = true),
+                BrowserTab("Parent", folder, true),
+                BrowserTab("Child", child),
+                BrowserTab("Kept", kept, history = ArrayDeque<File>().apply { add(folder) })
+            ), child)
+            folder.deleteRecursively()
+            assertEquals(2, controller.pruneMissingDirectories(root))
+            assertEquals(root, controller.currentDirectory)
+            assertEquals(listOf(RecentLocation.directory, root, kept), controller.tabs.map { it.directory })
+            assertTrue(controller.tabs.last().history.isEmpty())
+            controller.switchTo(2)
+            assertEquals(0, controller.pruneMissingDirectories(root))
+            assertEquals(kept, controller.currentDirectory)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun controller(root: File, tabs: List<BrowserTab>, active: File) = DockSessionController(
         initialDirectory = root,
         initialTabs = tabs,
