@@ -18,6 +18,7 @@ import com.ane.filemanager.pluginmanager.PluginRegistry
 import com.ane.filemanager.pluginmanager.PluginSource
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
+import com.ane.filemanager.plugin.api.ui.AneMotion
 import com.ane.filemanager.ui.secondary.SecondaryPageScaffold
 import com.ane.filemanager.plugin.api.ui.AneTheme
 import java.io.File
@@ -95,6 +96,7 @@ internal class PluginManagerDialog(
         isClickable = true
         isFocusable = true
         setOnClickListener { chooseZip() }
+        AneMotion.bindPressFeedback(this)
     }
 
     private fun rebuildCards() {
@@ -175,6 +177,7 @@ internal class PluginManagerDialog(
                             setTextColor(if (dark) Color.rgb(255, 145, 145) else Color.rgb(184, 48, 48))
                             background = rounded(if (dark) Color.rgb(65, 38, 42) else Color.rgb(255, 238, 238), 12f)
                             setOnClickListener { confirmRemove(entry) }
+                            AneMotion.bindPressFeedback(this)
                         }, LinearLayout.LayoutParams(-2, dp(38)))
                     }
                 })

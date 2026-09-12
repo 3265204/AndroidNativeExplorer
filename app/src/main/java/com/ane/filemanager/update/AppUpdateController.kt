@@ -14,7 +14,9 @@ import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
+import com.ane.filemanager.plugin.api.ui.AneTheme
 import com.ane.filemanager.provider.LocalFileProvider
+import com.ane.filemanager.ui.settings.update.ReleaseNotesMarkdown
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -98,18 +100,25 @@ internal class AppUpdateController(private val host: MainActivity) {
             download(release)
             return
         }
-        val notes = release.notes.trim().take(MAX_NOTES_LENGTH).ifEmpty {
+        val notes = release.notes.trim().ifEmpty {
             host.getString(R.string.update_no_release_notes)
         }
-        AneDialog.message(
-            activity = host,
-            title = host.getString(R.string.update_available_title),
-            message = host.getString(
+        val theme = AneTheme.resolve(host)
+        val message = ReleaseNotesMarkdown.render(
+            context = host,
+            source = host.getString(
                 R.string.update_available_message,
                 BuildConfig.VERSION_NAME,
                 release.version,
                 notes
             ),
+            theme = theme
+        )
+        AneDialog.message(
+            activity = host,
+            title = host.getString(R.string.update_available_title),
+            message = message,
+            colors = theme,
             actions = listOf(
                 AneDialogAction(host.getString(R.string.update_later)),
                 AneDialogAction(
@@ -361,7 +370,6 @@ internal class AppUpdateController(private val host: MainActivity) {
         const val KEY_PENDING_APK = "pending-apk"
         const val UPDATE_DIRECTORY = "updates"
         const val NETWORK_TIMEOUT_MS = 20_000
-        const val MAX_NOTES_LENGTH = 1_200
         val launchCheckStarted = AtomicBoolean(false)
     }
 }

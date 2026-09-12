@@ -12,6 +12,7 @@ import com.ane.filemanager.plugin.api.ui.AneComponents
 import com.ane.filemanager.plugin.api.ui.AneMotion
 import com.ane.filemanager.plugin.api.ui.AneTheme
 import com.ane.filemanager.plugin.api.ui.AneUiTokens
+import com.ane.filemanager.ui.motion.SwipeBackLayout
 
 /**
  * Shared host chrome for full-screen second-level pages.
@@ -49,7 +50,7 @@ internal class SecondaryPageScaffold(
     )
     val summary: TextView
         get() = header.summary
-    val root = FrameLayout(host).apply {
+    val root = SwipeBackLayout(host, ::finishSwipeClose).apply {
         visibility = android.view.View.INVISIBLE
         setBackgroundColor(theme.background)
         isClickable = true
@@ -101,10 +102,21 @@ internal class SecondaryPageScaffold(
     fun close() {
         if (closing || root.parent == null) return
         closing = true
+        root.cancelSwipe()
         AneMotion.hide(root) {
-            host.removeFullscreenOverlay(root)
-            onClosed()
+            finishClose()
         }
+    }
+
+    private fun finishSwipeClose() {
+        if (closing || root.parent == null) return
+        closing = true
+        finishClose()
+    }
+
+    private fun finishClose() {
+        host.removeFullscreenOverlay(root)
+        onClosed()
     }
 
     private fun systemInsets(insets: WindowInsets): UiInsets = if (Build.VERSION.SDK_INT >= 30) {

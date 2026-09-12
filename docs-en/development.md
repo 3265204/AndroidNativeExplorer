@@ -50,6 +50,8 @@ File extensions, MIME matching and format detection belong to the specific plugi
 
 - Click selection gives immediate feedback; do not add meaningless animations to ordinary file clicks.
 - Menu animations expand from the trigger point and return to the same trigger point on dismissal.
+- Full-screen secondary pages support swipe-back from the layout start edge; the gesture takes over only after a clear horizontal intent and must not steal vertical content scrolling.
+- Pages, dialogs, menus, Dock and media transitions reuse the semantic durations and enter/exit easing in `AneMotion`; feature modules do not define near-duplicate motion parameters.
 - Dock reorder animation must start from the tab's current draw position, resuming from the visual position during the animation when dragging across multiple tabs, to avoid teleporting.
 - Animations are managed by `ui/motion`; business controllers must not maintain animation progress themselves.
 - Long-press and double-click use the system timeouts from Android `ViewConfiguration`.

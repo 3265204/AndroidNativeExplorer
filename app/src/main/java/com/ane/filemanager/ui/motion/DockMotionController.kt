@@ -3,7 +3,7 @@ package com.ane.filemanager.ui.motion
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
-import android.view.animation.PathInterpolator
+import com.ane.filemanager.plugin.api.ui.AneMotion
 import com.ane.filemanager.ui.model.DockMotionSnapshot
 import com.ane.filemanager.ui.model.TabMotionStart
 
@@ -29,7 +29,7 @@ internal class DockMotionController(private val invalidate: () -> Unit) {
         direction = if (to > from) 1 else -1
         indicatorProgress = 0f
         contentProgress = 0f
-        indicatorAnimator = animate(0f, 1f, INDICATOR_DURATION_MS) {
+        indicatorAnimator = animate(0f, 1f, AneMotion.DURATION_LONG_MS) {
             indicatorProgress = it
         }
     }
@@ -37,7 +37,7 @@ internal class DockMotionController(private val invalidate: () -> Unit) {
     fun revealContent() {
         if (contentProgress >= 1f) return
         contentAnimator?.cancel()
-        contentAnimator = animate(contentProgress, 1f, CONTENT_DURATION_MS) {
+        contentAnimator = animate(contentProgress, 1f, AneMotion.DURATION_MEDIUM_MS) {
             contentProgress = it
         }
     }
@@ -48,8 +48,8 @@ internal class DockMotionController(private val invalidate: () -> Unit) {
         reorderStarts = starts
         reorderProgress = 0f
         reorderAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = REORDER_DURATION_MS
-            interpolator = PathInterpolator(.2f, 0f, 0f, 1f)
+            duration = AneMotion.DURATION_MEDIUM_MS
+            interpolator = AneMotion.ENTER_INTERPOLATOR
             addUpdateListener {
                 reorderProgress = it.animatedValue as Float
                 invalidate()
@@ -101,7 +101,7 @@ internal class DockMotionController(private val invalidate: () -> Unit) {
         update: (Float) -> Unit
     ): ValueAnimator = ValueAnimator.ofFloat(startValue, endValue).apply {
         duration = durationMs
-        interpolator = PathInterpolator(.2f, 0f, 0f, 1f)
+        interpolator = AneMotion.ENTER_INTERPOLATOR
         addUpdateListener {
             update(it.animatedValue as Float)
             invalidate()
@@ -109,9 +109,4 @@ internal class DockMotionController(private val invalidate: () -> Unit) {
         start()
     }
 
-    private companion object {
-        const val REORDER_DURATION_MS = 210L
-        const val INDICATOR_DURATION_MS = 260L
-        const val CONTENT_DURATION_MS = 210L
-    }
 }

@@ -19,6 +19,7 @@ import com.ane.filemanager.localization.LanguageMode
 import com.ane.filemanager.ui.appearance.AppearanceController
 import com.ane.filemanager.ui.appearance.ThemeMode
 import com.ane.filemanager.plugin.api.ui.AneDialog
+import com.ane.filemanager.plugin.api.ui.AneMotion
 import com.ane.filemanager.ui.model.LayoutMode
 import com.ane.filemanager.ui.secondary.SecondaryPageScaffold
 import com.ane.filemanager.plugin.api.ui.AneTheme
@@ -178,6 +179,7 @@ internal class SettingsDialog(
             isFocusable = true
             contentDescription = host.getString(R.string.settings_choice_description, title, value)
             setOnClickListener { action() }
+            AneMotion.bindPressFeedback(this)
         }
 
     private fun sliderCard(

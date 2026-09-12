@@ -14,6 +14,7 @@ import com.ane.filemanager.BuildConfig
 import com.ane.filemanager.MainActivity
 import com.ane.filemanager.R
 import com.ane.filemanager.plugin.api.ui.AneTheme
+import com.ane.filemanager.plugin.api.ui.AneMotion
 import com.ane.filemanager.ui.secondary.SecondaryPageScaffold
 
 /** Second-level settings page dedicated to app version checks and installation policy. */
@@ -115,6 +116,7 @@ internal class UpdateSettingsDialog(
             isFocusable = true
             contentDescription = "$title, $hint"
             setOnClickListener { action() }
+            AneMotion.bindPressFeedback(this)
         }
 
     private fun switchCard(

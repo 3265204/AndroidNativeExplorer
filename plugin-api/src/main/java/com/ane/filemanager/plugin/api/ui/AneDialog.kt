@@ -6,13 +6,17 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.text.Editable
+import android.text.Spanned
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.View.MeasureSpec
 import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.text.method.LinkMovementMethod
+import android.text.util.Linkify
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -56,7 +60,7 @@ object AneDialog {
         }
         frame.body.addView(input, LinearLayout.LayoutParams(-1, -2))
         frame.body.addView(error, LinearLayout.LayoutParams(-1, -2))
-        addButton(frame, AneDialogAction(cancelLabel)) { frame.dialog.cancel() }
+        addButton(frame, AneDialogAction(cancelLabel)) { cancel(frame) }
         val submit = {
             val value = input.text.toString().trim()
             val problem = validate(value)
@@ -64,8 +68,7 @@ object AneDialog {
                 error.text = problem
                 error.visibility = View.VISIBLE
             } else {
-                frame.dialog.dismiss()
-                onConfirm(value)
+                dismiss(frame) { onConfirm(value) }
             }
         }
         addButton(frame, AneDialogAction(confirmLabel, primary = true), submit)
@@ -97,15 +100,35 @@ object AneDialog {
         message: String,
         actions: List<AneDialogAction>,
         colors: AneTheme = AneTheme.resolve(activity)
+    ) = message(activity, title, message as CharSequence, actions, colors)
+
+    fun message(
+        activity: Activity,
+        title: String,
+        message: CharSequence,
+        actions: List<AneDialogAction>,
+        colors: AneTheme = AneTheme.resolve(activity)
     ) {
         val frame = frame(activity, title, colors)
-        frame.body.addView(text(activity, message, 14.5f, frame.palette.text).apply {
+        val messageView = text(activity, message, 14.5f, frame.palette.text).apply {
             setLineSpacing(0f, 1.18f)
+            if (message is Spanned) {
+                movementMethod = LinkMovementMethod.getInstance()
+                highlightColor = frame.palette.selected
+                linksClickable = true
+                setLinkTextColor(frame.palette.primary)
+                @Suppress("DEPRECATION")
+                Linkify.addLinks(this, Linkify.WEB_URLS)
+            }
+        }
+        frame.body.addView(MaxHeightScrollView(activity, messageMaxHeight(activity)).apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = true
+            addView(messageView, FrameLayout.LayoutParams(-1, -2))
         }, LinearLayout.LayoutParams(-1, -2))
         actions.forEach { action ->
             addButton(frame, action) {
-                frame.dialog.dismiss()
-                action.run()
+                dismiss(frame, action.run)
             }
         }
         show(frame)
@@ -123,8 +146,7 @@ object AneDialog {
         val choices = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         labels.forEachIndexed { index, label ->
             choices.addView(choiceRow(activity, label, frame.palette) {
-                frame.dialog.dismiss()
-                onSelected(index)
+                dismiss(frame) { onSelected(index) }
             })
         }
         val scroll = ScrollView(activity).apply {
@@ -134,7 +156,7 @@ object AneDialog {
         frame.body.addView(scroll, LinearLayout.LayoutParams(
             -1, min(dp(activity, 360), dp(activity, 52) * labels.size.coerceAtLeast(1))
         ))
-        addButton(frame, AneDialogAction(cancelLabel)) { frame.dialog.cancel() }
+        addButton(frame, AneDialogAction(cancelLabel)) { cancel(frame) }
         show(frame)
     }
 
@@ -169,7 +191,7 @@ object AneDialog {
         frame.body.addView(input, LinearLayout.LayoutParams(-1, -2))
         frame.body.addView(summary, LinearLayout.LayoutParams(-1, -2))
         frame.body.addView(scroll, LinearLayout.LayoutParams(-1, dp(activity, 330)))
-        addButton(frame, AneDialogAction(cancelLabel)) { frame.dialog.cancel() }
+        addButton(frame, AneDialogAction(cancelLabel)) { cancel(frame) }
 
         var searchGeneration = 0
         input.addTextChangedListener(object : TextWatcher {
@@ -188,8 +210,7 @@ object AneDialog {
                     summary.text = if (matches.isEmpty()) noResultsText else resultCount(matches.size)
                     matches.take(MAX_VISIBLE_RESULTS).forEach { item ->
                         results.addView(choiceRow(activity, label(item), frame.palette) {
-                            frame.dialog.dismiss()
-                            onSelected(item)
+                            dismiss(frame) { onSelected(item) }
                         })
                     }
                 }, SEARCH_DEBOUNCE_MS)
@@ -228,7 +249,7 @@ object AneDialog {
         }
         root.addView(buttons, LinearLayout.LayoutParams(-1, -2))
         dialog.setContentView(root)
-        return Frame(activity, dialog, buttons, body, palette)
+        return Frame(activity, dialog, root, buttons, body, palette)
     }
 
     private fun addButton(frame: Frame, action: AneDialogAction, overrideRun: () -> Unit) {
@@ -249,6 +270,7 @@ object AneDialog {
             isClickable = true
             isFocusable = true
             setOnClickListener { overrideRun() }
+            AneMotion.bindPressFeedback(this)
         }
         frame.buttons.addView(button, LinearLayout.LayoutParams(-2, -2).apply {
             marginStart = dp(button.context, 8)
@@ -267,6 +289,7 @@ object AneDialog {
             isClickable = true
             isFocusable = true
             setOnClickListener { action() }
+            AneMotion.bindPressFeedback(this)
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(activity, 7) }
         }
 
@@ -284,7 +307,7 @@ object AneDialog {
 
     private fun text(
         activity: Activity,
-        value: String,
+        value: CharSequence,
         size: Float,
         color: Int,
         style: Int = Typeface.NORMAL
@@ -296,6 +319,16 @@ object AneDialog {
     }
 
     private fun show(frame: Frame, softInput: Boolean = false) {
+        frame.dialog.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_BACK &&
+                event.action == KeyEvent.ACTION_UP && event.repeatCount == 0
+            ) {
+                cancel(frame)
+                true
+            } else {
+                false
+            }
+        }
         frame.dialog.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setWindowAnimations(0)
@@ -311,7 +344,31 @@ object AneDialog {
             min(available, dp(activity, AneUiTokens.DIALOG_MAX_WIDTH_DP)),
             WindowManager.LayoutParams.WRAP_CONTENT
         )
+        frame.root.post { if (frame.dialog.isShowing) AneMotion.showDialog(frame.root) }
     }
+
+    private fun dismiss(frame: Frame, after: () -> Unit = {}) {
+        if (frame.closing) return
+        frame.closing = true
+        frame.buttons.isEnabled = false
+        AneMotion.hideDialog(frame.root) {
+            if (frame.dialog.isShowing) frame.dialog.dismiss()
+            after()
+        }
+    }
+
+    private fun cancel(frame: Frame) {
+        if (frame.closing) return
+        frame.closing = true
+        AneMotion.hideDialog(frame.root) {
+            if (frame.dialog.isShowing) frame.dialog.cancel()
+        }
+    }
+
+    private fun messageMaxHeight(activity: Activity): Int = min(
+        dp(activity, MESSAGE_MAX_HEIGHT_DP),
+        (activity.resources.displayMetrics.heightPixels * MESSAGE_MAX_SCREEN_RATIO).toInt()
+    )
 
     private fun dp(activity: android.content.Context, value: Int): Int =
         (value * activity.resources.displayMetrics.density + .5f).toInt()
@@ -319,13 +376,27 @@ object AneDialog {
     private data class Frame(
         val activity: Activity,
         val dialog: Dialog,
+        val root: LinearLayout,
         val buttons: LinearLayout,
         val body: LinearLayout,
-        val palette: AneTheme
+        val palette: AneTheme,
+        var closing: Boolean = false
     )
+
+    private class MaxHeightScrollView(
+        context: android.content.Context,
+        private val maximumHeight: Int
+    ) : ScrollView(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            super.onMeasure(
+                widthMeasureSpec,
+                MeasureSpec.makeMeasureSpec(maximumHeight, MeasureSpec.AT_MOST)
+            )
+        }
+    }
 
     private const val SEARCH_DEBOUNCE_MS = 70L
     private const val MAX_VISIBLE_RESULTS = 100
+    private const val MESSAGE_MAX_HEIGHT_DP = 440
+    private const val MESSAGE_MAX_SCREEN_RATIO = .52f
 }
-
-

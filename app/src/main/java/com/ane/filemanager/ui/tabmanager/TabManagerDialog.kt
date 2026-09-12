@@ -22,6 +22,7 @@ import com.ane.filemanager.navigation.BrowserTab
 import com.ane.filemanager.navigation.DockSessionController
 import com.ane.filemanager.navigation.DockSessionStore
 import com.ane.filemanager.plugin.api.ui.AneDialog
+import com.ane.filemanager.plugin.api.ui.AneMotion
 import com.ane.filemanager.ui.motion.GestureTiming
 import com.ane.filemanager.ui.secondary.SecondaryPageScaffold
 import com.ane.filemanager.plugin.api.ui.AneTheme
@@ -346,6 +347,7 @@ internal class TabManagerDialog(
         isClickable = true
         isFocusable = true
         setOnClickListener { action() }
+        AneMotion.bindPressFeedback(this)
     }
 
     private fun LinearLayout.addDistributedAction(

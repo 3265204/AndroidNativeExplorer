@@ -87,6 +87,7 @@ object AneComponents {
             context.aneDp(AneUiTokens.RADIUS_MEDIUM_DP).toFloat()
         )
         setOnClickListener { onClick() }
+        AneMotion.bindPressFeedback(this)
     }
 
     fun textActionButton(
@@ -102,6 +103,7 @@ object AneComponents {
         setBackgroundColor(Color.TRANSPARENT)
         this.contentDescription = contentDescription
         setOnClickListener { onClick() }
+        AneMotion.bindPressFeedback(this)
     }
 
     fun configureTextEditor(editor: EditText, theme: AneTheme) {
@@ -132,6 +134,7 @@ object AneComponents {
         setBackgroundColor(Color.TRANSPARENT)
         this.contentDescription = contentDescription
         setOnClickListener { onClick() }
+        AneMotion.bindPressFeedback(this)
     }
 
     fun topBar(
@@ -283,6 +286,7 @@ object AneComponents {
         isClickable = true
         isFocusable = true
         setOnClickListener { onClick() }
+        AneMotion.bindPressFeedback(this)
         container.addView(
             this,
             android.widget.FrameLayout.LayoutParams(
@@ -333,6 +337,7 @@ object AneComponents {
             background = AneShapes.rounded(theme.surface, context.aneDp(18).toFloat())
             contentDescription = navigationDescription
             setOnClickListener { onNavigate() }
+            AneMotion.bindPressFeedback(this)
         }
         val titleView = text(
             context,
@@ -397,6 +402,7 @@ object AneComponents {
         isClickable = true
         isFocusable = true
         setOnClickListener { onClick() }
+        AneMotion.bindPressFeedback(this)
     }
 
     fun badge(
@@ -490,6 +496,7 @@ object AneComponents {
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
+            AneMotion.bindPressFeedback(this)
         }
     }
 

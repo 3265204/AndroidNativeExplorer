@@ -3,7 +3,7 @@ package com.ane.filemanager.ui.motion
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
-import android.view.animation.PathInterpolator
+import com.ane.filemanager.plugin.api.ui.AneMotion
 import com.ane.filemanager.ui.model.MotionSnapshot
 
 /** Owns only menu transitions; ordinary clicks and selection changes are immediate. */
@@ -20,15 +20,15 @@ internal class UiMotionController(private val invalidate: () -> Unit) {
         menuAnimator?.cancel()
         resetLayerAnimation()
         menuProgress = 0f
-        animateMenuTo(1f, 240L)
+        animateMenuTo(1f, AneMotion.DURATION_MEDIUM_MS)
     }
 
     fun enterMenuLayer(layer: Int) {
-        animateMenuLayer(layer, 1f, 210L)
+        animateMenuLayer(layer, 1f, AneMotion.DURATION_MEDIUM_MS)
     }
 
     fun exitMenuLayer(layer: Int, after: () -> Unit) {
-        animateMenuLayer(layer, 0f, 160L, after)
+        animateMenuLayer(layer, 0f, AneMotion.DURATION_SHORT_MS, after)
     }
 
     fun isMenuOpening() = menuProgress < 1f && !closing
@@ -45,11 +45,8 @@ internal class UiMotionController(private val invalidate: () -> Unit) {
         menuLayerProgress = start
         val animator = ValueAnimator.ofFloat(start, target).apply {
             this.duration = duration
-            interpolator = if (target > start) {
-                PathInterpolator(.2f, 0f, 0f, 1f)
-            } else {
-                PathInterpolator(.4f, 0f, 1f, 1f)
-            }
+            interpolator = if (target > start) AneMotion.ENTER_INTERPOLATOR
+            else AneMotion.EXIT_INTERPOLATOR
             addUpdateListener {
                 menuLayerProgress = it.animatedValue as Float
                 invalidate()
@@ -79,7 +76,7 @@ internal class UiMotionController(private val invalidate: () -> Unit) {
         if (closing) return
         closing = true
         resetLayerAnimation()
-        animateMenuTo(0f, 190L) {
+        animateMenuTo(0f, AneMotion.DURATION_SHORT_MS) {
             closing = false
             after()
         }
@@ -98,11 +95,8 @@ internal class UiMotionController(private val invalidate: () -> Unit) {
         menuAnimator?.cancel()
         val animator = ValueAnimator.ofFloat(menuProgress, target).apply {
             this.duration = duration
-            interpolator = if (target > menuProgress) {
-                PathInterpolator(.2f, 0f, 0f, 1f)
-            } else {
-                PathInterpolator(.4f, 0f, 1f, 1f)
-            }
+            interpolator = if (target > menuProgress) AneMotion.ENTER_INTERPOLATOR
+            else AneMotion.EXIT_INTERPOLATOR
             addUpdateListener {
                 menuProgress = it.animatedValue as Float
                 invalidate()

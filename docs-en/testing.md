@@ -112,6 +112,8 @@ The MuMu ADB address depends on local configuration; the common current example 
 - Tab management and plugin management use the same title, safe area and enter/exit shell; switching pages in a narrow window does not jump or cross the status bar.
 - The top-left menu shows only a unified "Settings" entry; language, theme, display mode, font, icon, line spacing and hidden files are all inside the settings secondary page.
 - Font, icon and line-spacing sliders update the value and file area in real time while dragging, and persist after restart; cards reflow dynamically in portrait/landscape and small windows and sliders remain precisely operable.
+- Settings, app updates, plugin management and tab management support swipe-back from the left edge (mirrored in RTL); vertical scrolling and sliders are not mistaken for back gestures.
+- Long update notes scroll independently while the Later and Download and install actions remain visible; headings, lists, emphasis, code and links in release Markdown render correctly.
 - Quickly alternating clicks on the plus button, top-left menu and sort button: the popup background, shadow and text must fade in/out together, leaving no borderless text.
 - Switching Dock, entering a folder or returning to a directory: the old list stays until the new directory scan completes, then atomically replaces, without a single "empty folder" frame; the old list is not tappable during the transition.
 - Plugin ZIPs with invalid manifest, API version or Dex SHA-256 are rejected with no half-finished residue.

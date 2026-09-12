@@ -21,6 +21,7 @@ import com.ane.filemanager.plugin.api.ui.AneMediaArtwork
 import com.ane.filemanager.plugin.api.ui.AneMediaSequenceNavigation
 import com.ane.filemanager.plugin.api.ui.AneMediaSequenceStage
 import com.ane.filemanager.plugin.api.ui.AneMediaStageStyle
+import com.ane.filemanager.plugin.api.ui.AneMotion
 import com.ane.filemanager.plugin.api.ui.AneShapes
 import com.ane.filemanager.plugin.api.ui.AneTextRole
 import com.ane.filemanager.plugin.api.ui.AneTextTone
@@ -140,6 +141,7 @@ internal object HostUi {
             }
             isEnabled = false
             setOnClickListener { onPlay() }
+            AneMotion.bindPressFeedback(this)
         }
         val next = transportButton(context, theme, nextSymbol, nextDescription, onNext)
         val row = LinearLayout(context).apply {
@@ -241,7 +243,8 @@ internal object HostUi {
         view.animate()
             .translationX(target)
             .alpha(0f)
-            .setDuration(MEDIA_EXIT_DURATION_MS)
+            .setDuration(AneMotion.DURATION_SHORT_MS)
+            .setInterpolator(AneMotion.EXIT_INTERPOLATOR)
             .withEndAction(onFinished)
             .start()
     }
@@ -258,7 +261,8 @@ internal object HostUi {
         view.animate()
             .translationX(0f)
             .alpha(1f)
-            .setDuration(MEDIA_ENTER_DURATION_MS)
+            .setDuration(AneMotion.DURATION_MEDIUM_MS)
+            .setInterpolator(AneMotion.ENTER_INTERPOLATOR)
             .withEndAction(onFinished)
             .start()
     }
@@ -277,6 +281,7 @@ internal object HostUi {
         contentDescription = description
         setPadding(0, 0, 0, context.aneDp(MEDIA_SWITCH_BOTTOM_PADDING_DP))
         setOnClickListener { onClick() }
+        AneMotion.bindPressFeedback(this)
     }
 
     private const val MEDIA_SWITCH_BOTTOM_PADDING_DP = 3
@@ -297,6 +302,4 @@ internal object HostUi {
     private const val MEDIA_PROGRESS_SIZE_DP = 48
     private const val MEDIA_EXIT_DISTANCE_RATIO = .16f
     private const val MEDIA_ENTER_DISTANCE_RATIO = .12f
-    private const val MEDIA_EXIT_DURATION_MS = 110L
-    private const val MEDIA_ENTER_DURATION_MS = 150L
 }
