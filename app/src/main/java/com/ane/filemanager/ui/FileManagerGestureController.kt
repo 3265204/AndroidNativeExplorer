@@ -186,6 +186,8 @@ internal class FileManagerGestureController(
         view.onboarding.active || handleSecondaryMousePress(event)
 
     fun reset() {
+        view.removeCallbacks(dockScrollFrame)
+        dockScrollFramePending = false
         with(view) {
             handler.removeCallbacks(longPressRunnable)
             handler.removeCallbacks(longPressMenuRunnable)
@@ -361,6 +363,7 @@ internal class FileManagerGestureController(
                     scrollY = (scrollY + (lastY - y)).coerceIn(0f, maxScroll)
                 }
             }
+            if (dragging || tabDragging) scheduleDockScrollFrame()
             lastX = x
             lastY = y
             invalidate()
@@ -500,7 +503,6 @@ internal class FileManagerGestureController(
 
     private fun reorderDraggedTab(x: Float) {
         with(view) {
-            autoScrollDockDuringTabDrag(x)
             val tab = draggedTab ?: return
             val from = tabs.indexOf(tab)
             val to = renderer.tabSlotHits.lastOrNull { it.rect.contains(x, dragY) }?.index ?: return
@@ -515,16 +517,33 @@ internal class FileManagerGestureController(
         }
     }
 
-    private fun autoScrollDockDuringTabDrag(x: Float) {
-        with(view) {
-            val edge = dp(52f)
-            val delta = when {
-                x < contentLeft + edge -> -dp(12f)
-                x > contentRight - edge -> dp(12f)
-                else -> 0f
+    private var dockScrollFramePending = false
+    private val dockScrollFrame = object : Runnable {
+        override fun run() {
+            dockScrollFramePending = false
+            with(view) {
+                if ((!dragging && !tabDragging) || !isAttachedToWindow) return
+                if (dragY !in contentBottom..(height - systemInsets.bottom).toFloat()) return
+                val edge = dp(52f)
+                val delta = when {
+                    dragX < contentLeft + edge -> -dp(8f)
+                    dragX > contentRight - edge -> dp(8f)
+                    else -> return
+                }
+                val next = (dockScrollX + delta).coerceIn(0f, maxDockScroll)
+                if (next == dockScrollX) return
+                revealActiveTab = false
+                dockScrollX = next
+                invalidate()
+                scheduleDockScrollFrame()
             }
-            if (delta != 0f) dockScrollX = (dockScrollX + delta).coerceIn(0f, maxDockScroll)
         }
+    }
+
+    private fun scheduleDockScrollFrame() {
+        if (dockScrollFramePending) return
+        dockScrollFramePending = true
+        view.postOnAnimation(dockScrollFrame)
     }
 
     private fun updateDragCancelFeedback(x: Float, y: Float) {

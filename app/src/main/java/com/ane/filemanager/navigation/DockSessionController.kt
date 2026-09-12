@@ -27,6 +27,22 @@ internal class DockSessionController(
             ?: find(fallback).coerceAtLeast(0)
     }
 
+    /** Removes stale user locations, including pinned folders and deleted descendants. */
+    fun pruneMissingDirectories(fallback: File): Int {
+        val active = currentTab
+        val missing = tabs.filterIndexed { index, tab ->
+            !isFixed(index) && !tab.directory.isDirectory
+        }
+        val staleHistory = tabs.any { tab -> tab.history.any { !it.isDirectory } }
+        if (missing.isEmpty() && !staleHistory) return 0
+        tabs.removeAll(missing.toSet())
+        tabs.forEach { tab -> tab.history.removeAll { !it.isDirectory } }
+        activeIndex = tabs.indexOfFirst { it === active }.takeIf { it >= 0 }
+            ?: find(fallback).coerceAtLeast(0)
+        onChanged()
+        return missing.size
+    }
+
     fun isFixed(index: Int) = index <= 0 || tabs.getOrNull(index)?.fixed == true
 
     val currentTab get() = tabs[activeIndex]

@@ -258,6 +258,7 @@ internal class FileManagerView(
         inertialScroll.onCancel()
         dockInertialScroll.onCancel()
         dockMotion.cancel()
+        if (::gestures.isInitialized) gestures.reset()
         directoryLoader.close()
         renderer.close()
         if (::fileActions.isInitialized) fileActions.close()
@@ -323,6 +324,20 @@ internal class FileManagerView(
             }, storageRoot)
             if (!com.ane.filemanager.navigation.RecentLocation.isRecent(currentDirectory) &&
                 !currentDirectory.isDirectory) dock.switchTo(dock.indexOfDirectory(storageRoot))
+        }
+        if (onboardingWorkspace == null && host.hasStorageAccess() && storageRoot.canRead()) {
+            val active = dock.currentTab
+            val starts = renderer.tabVisualStarts()
+            if (dock.pruneMissingDirectories(storageRoot) > 0) {
+                dockMotion.reorderFrom(starts)
+                if (dock.currentTab !== active) {
+                    selection.clear()
+                    scrollY = 0f
+                    revealActiveTab = true
+                }
+                lastActiveTab = dock.currentTab
+                lastActiveIndex = dock.activeIndex
+            }
         }
         val directory = currentDirectory
         val changingDirectory = displayedDirectoryPath != directory.absolutePath
