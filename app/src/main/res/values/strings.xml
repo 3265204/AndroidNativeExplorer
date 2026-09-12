@@ -129,7 +129,7 @@
     <string name="settings_updates_hint">管理版本检查与自动更新</string>
     <string name="settings_check_updates_title">检查更新</string>
     <string name="settings_automatic_updates_title">自动更新</string>
-    <string name="settings_automatic_updates_hint">启动时检查并下载新版本（默认关闭）</string>
+    <string name="settings_automatic_updates_hint">启动时检查并下载新版本</string>
     <string name="settings_storage_permission_hint">打开 Android 的存储访问设置</string>
     <string name="settings_value_sp">%1$d sp</string>
     <string name="settings_value_dp">%1$d dp</string>
