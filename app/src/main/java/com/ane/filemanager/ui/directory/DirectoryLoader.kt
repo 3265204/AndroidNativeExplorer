@@ -23,7 +23,7 @@ internal class DirectoryLoader(
     private val requestLock = Any()
     private var request: Job? = null
 
-    fun load(directory: File, showHidden: Boolean, sorter: (List<File>) -> List<File>) {
+    fun load(directory: File, showHidden: Boolean, includeFile: File? = null, sorter: (List<File>) -> List<File>) {
         if (closed.get()) return
         val requestGeneration = generation.incrementAndGet()
         synchronized(requestLock) {
@@ -32,7 +32,7 @@ internal class DirectoryLoader(
                 runInterruptible {
                     val recent = com.ane.filemanager.navigation.RecentLocation.isRecent(directory)
                     val listed = if (recent) recentFiles?.invoke(showHidden).orEmpty() else directory.listFiles()?.filter {
-                        showHidden || !it.name.startsWith('.')
+                        showHidden || it == includeFile || !it.name.startsWith('.')
                     }.orEmpty()
                     ensureActive()
                     val sorted = if (recent) listed else sorter(listed)

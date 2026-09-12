@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
-import android.provider.DocumentsContract
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -22,6 +21,7 @@ import android.text.InputType
 import com.ane.filemanager.core.file.FileTypeResolver
 import com.ane.filemanager.operation.FileProblem
 import com.ane.filemanager.operation.fileProblemMessage
+import com.ane.filemanager.interaction.ExternalFileLocationResolver
 import com.ane.filemanager.interaction.FileInteractionService
 import com.ane.filemanager.core.file.FileQueryService
 import com.ane.filemanager.localization.AppLanguage
@@ -33,6 +33,14 @@ import com.ane.filemanager.ui.onboarding.OnboardingWorkspace
 import com.ane.filemanager.update.AppUpdateController
 import com.ane.filemanager.plugin.api.ui.AneDialog
 import com.ane.filemanager.plugin.api.ui.AneDialogAction
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import java.io.File
 
 class MainActivity : Activity() {
@@ -40,6 +48,9 @@ class MainActivity : Activity() {
     private lateinit var fileView: FileManagerView
     private var pickerRequest: PickerRequest? = null
     private var pickerButton: Button? = null
+    private val locationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var locationJob: Job? = null
+    private var pendingExternalLocation = false
     private val fullscreenOverlays = mutableListOf<FullscreenOverlay>()
     private val onboardingStore by lazy { OnboardingStore(this) }
     private val fileInteractionsDelegate = lazy { FileInteractionService(this) }
@@ -57,9 +68,9 @@ class MainActivity : Activity() {
             android.os.StrictMode.setVmPolicy(android.os.StrictMode.VmPolicy.Builder().build())
         }
         pickerRequest = PickerRequest.from(intent)
-        val viewedDirectory = resolveViewedDirectory(intent)
+        pendingExternalLocation = intent.action == Intent.ACTION_VIEW
         val onboardingWorkspace = if (
-            !BuildConfig.DEBUG && pickerRequest == null && !onboardingStore.isCompleted()
+            !BuildConfig.DEBUG && pickerRequest == null && !pendingExternalLocation && !onboardingStore.isCompleted()
         ) {
             OnboardingWorkspace.prepare(this)
         } else {
@@ -69,7 +80,6 @@ class MainActivity : Activity() {
         contentRoot = FrameLayout(this)
         fileView = FileManagerView(
             host = this,
-            launchDirectory = viewedDirectory,
             pickerAllowsMultiple = pickerRequest?.allowsMultiple == true,
             fileFilter = { pickerRequest?.accepts(it) != false },
             onPickerFileOpened = pickerRequest?.let { { file -> handlePickerFileOpened(file) } },
@@ -85,7 +95,7 @@ class MainActivity : Activity() {
         pickerRequest?.let { addPickerButton() }
         setContentView(contentRoot)
         if (onboardingWorkspace == null) ensureStorageAccess()
-        if (pickerRequest == null && onboardingWorkspace == null) updateController.checkOnLaunch()
+        if (pickerRequest == null && !pendingExternalLocation && onboardingWorkspace == null) updateController.checkOnLaunch()
     }
 
     fun showFullscreenOverlay(view: View, onBack: () -> Unit) {
@@ -102,9 +112,17 @@ class MainActivity : Activity() {
         fullscreenOverlays.lastOrNull()?.view?.requestApplyInsets()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // Rebuild picker/onboarding state if the caller reuses the top activity.
+        recreate()
+    }
+
     override fun onResume() {
         super.onResume()
         if (::fileView.isInitialized) fileView.refresh()
+        resolveExternalLocation()
         if (updateControllerDelegate.isInitialized()) updateController.continuePendingInstallIfAllowed()
     }
 
@@ -114,6 +132,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        locationScope.cancel()
         if (fileInteractionsDelegate.isInitialized()) fileInteractions.close()
         if (updateControllerDelegate.isInitialized()) updateController.close()
         if (::fileView.isInitialized) fileView.close()
@@ -149,40 +168,39 @@ class MainActivity : Activity() {
     fun initialDirectory(): File = Environment.getExternalStorageDirectory()
         ?.takeIf(File::isDirectory) ?: getExternalFilesDir(null) ?: filesDir
 
-    /** Resolves directory URIs sent by file-transfer apps such as LocalSend. */
-    private fun resolveViewedDirectory(intent: Intent): File? {
-        if (intent.action != Intent.ACTION_VIEW || intent.type !in DIRECTORY_MIME_TYPES) return null
-        val uri = intent.data ?: return null
-        val directory = runCatching {
-            when (uri.scheme) {
-                "file" -> uri.path?.let(::File)
-                "content" -> resolveDocumentDirectory(uri)
-                else -> null
-            }?.canonicalFile
-        }.getOrNull()
-        return directory?.takeIf { it.isDirectory && it.canRead() }
-    }
-
-    private fun resolveDocumentDirectory(uri: Uri): File? {
-        val documentId = when {
-            DocumentsContract.isTreeUri(uri) -> DocumentsContract.getTreeDocumentId(uri)
-            DocumentsContract.isDocumentUri(this, uri) -> DocumentsContract.getDocumentId(uri)
-            else -> return null
+    private fun resolveExternalLocation() {
+        if (!pendingExternalLocation || !hasStorageAccess() || locationJob?.isActive == true) return
+        val uri = intent.data
+        locationJob = locationScope.launch {
+            val location = try {
+                runInterruptible(Dispatchers.IO) {
+                    uri?.let { ExternalFileLocationResolver(this@MainActivity).resolve(it) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            pendingExternalLocation = false
+            val accessibleFile = location?.accessibleFile
+            if (accessibleFile != null) {
+                fileView.showFileLocation(accessibleFile, location.navigationRoot)
+            }
+            else AneDialog.message(
+                this@MainActivity,
+                getString(R.string.external_location_title),
+                location?.let { getString(R.string.external_location_restricted, it.originalPath) }
+                    ?: getString(R.string.external_location_unavailable),
+                buildList {
+                    if (location != null) add(AneDialogAction(getString(R.string.external_location_copy_path)) {
+                        getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(
+                            ClipData.newPlainText(getString(R.string.external_location_title), location.originalPath)
+                        )
+                    })
+                    add(AneDialogAction(getString(R.string.dialog_confirm), primary = true))
+                }
+            )
         }
-        if (uri.authority == "$packageName.documents") {
-            return if (documentId == "root") initialDirectory() else File(initialDirectory(), documentId)
-        }
-        if (uri.authority != EXTERNAL_STORAGE_AUTHORITY) return null
-
-        if (documentId.startsWith("raw:")) return File(documentId.removePrefix("raw:"))
-        val volumeId = documentId.substringBefore(':', missingDelimiterValue = documentId)
-        val relativePath = documentId.substringAfter(':', missingDelimiterValue = "")
-        val volumeRoot = when (volumeId.lowercase()) {
-            "primary" -> initialDirectory()
-            "home" -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            else -> File("/storage", volumeId)
-        }
-        return if (relativePath.isEmpty()) volumeRoot else File(volumeRoot, relativePath)
     }
 
     fun promptName(title: String, initial: String, callback: (String) -> Unit) {
@@ -342,12 +360,12 @@ class MainActivity : Activity() {
         if (files.isEmpty()) return
 
         val uris = files.map { LocalDocumentsProvider.uriFor(this, it) }
+        val resultType = ShareMimeTypes.common(files.map(request::mimeTypeFor))
         val result = Intent().apply {
-            data = uris.first()
+            setDataAndType(uris.first(), resultType)
             clipData = ClipData.newUri(contentResolver, files.first().name, uris.first()).also { clip ->
                 uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
             }
-            type = ShareMimeTypes.common(files.map(request::mimeTypeFor))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (request.persistable) addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
@@ -409,15 +427,6 @@ class MainActivity : Activity() {
                 )
             }
         }
-    }
-
-    private companion object {
-        const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
-        val DIRECTORY_MIME_TYPES = setOf(
-            "inode/directory",
-            "resource/folder",
-            DocumentsContract.Document.MIME_TYPE_DIR
-        )
     }
 
     private data class FullscreenOverlay(val view: View, val onBack: () -> Unit)

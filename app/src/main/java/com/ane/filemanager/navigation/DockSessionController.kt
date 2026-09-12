@@ -87,6 +87,21 @@ internal class DockSessionController(
         return true
     }
 
+    fun navigateToTransient(directory: File, navigationRoot: File): Boolean {
+        if (same(currentDirectory, directory) && currentTab.navigationRoot?.let { same(it, navigationRoot) } == true) {
+            return false
+        }
+        tabs += BrowserTab(
+            label = labelFor(directory),
+            directory = directory,
+            pinned = false,
+            navigationRoot = navigationRoot
+        )
+        activeIndex = tabs.lastIndex
+        onChanged()
+        return true
+    }
+
     fun goBack(): Boolean {
         val tab = currentTab
         if (tab.history.isEmpty()) return false
@@ -120,7 +135,7 @@ internal class DockSessionController(
     }
 
     fun pin(index: Int) {
-        if (index !in tabs.indices || tabs[index].pinned) return
+        if (index !in tabs.indices || tabs[index].pinned || tabs[index].navigationRoot != null) return
         val active = currentTab
         val tab = tabs.removeAt(index).apply { pinned = true }
         val insertion = tabs.indexOfFirst { !it.pinned }.let { if (it < 0) tabs.size else it }

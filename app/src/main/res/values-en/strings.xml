@@ -5,6 +5,10 @@
     <string name="downloads">Downloads</string>
     <string name="documents">Documents</string>
     <string name="pictures">Pictures</string>
+    <string name="external_location_title">Locate file</string>
+    <string name="external_location_copy_path">Copy path</string>
+    <string name="external_location_restricted">Original location: %1$s\n\nANE cannot currently browse this folder. Access to one shared file does not grant access to its whole folder; another app’s private folder generally requires root access. The original location may also be unavailable if the file was deleted.</string>
+    <string name="external_location_unavailable">The original folder is unavailable. The source app may have provided a temporary file or a file in a restricted folder. Save it to a public folder such as Downloads in the source app, then locate it with ANE.</string>
     <string name="tab_number">Tab %1$d</string>
 
     <string name="tutorial_layout_title">Choose a view</string>

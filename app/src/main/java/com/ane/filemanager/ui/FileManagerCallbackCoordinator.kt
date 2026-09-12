@@ -97,9 +97,21 @@ internal class FileManagerCallbackCoordinator(private val view: FileManagerView)
         }
     }
 
+    fun navigateToTransient(directory: File, navigationRoot: File) {
+        with(view) {
+            if (!directory.isDirectory || !directory.canRead()) {
+                host.toast(host.getString(R.string.cannot_read_directory))
+                return
+            }
+            dock.navigateToTransient(directory, navigationRoot)
+            sorting.markOpened(directory)
+            resetSelectionForNavigation()
+            onNavigationChanged()
+        }
+    }
+
     fun navigateUp() {
-        if (com.ane.filemanager.navigation.RecentLocation.isRecent(view.currentDirectory)) return
-        view.currentDirectory.parentFile?.let(::navigateTo)
+        parentForNavigation()?.let(::navigateTo)
     }
 
     fun switchTab(index: Int) {
@@ -140,7 +152,7 @@ internal class FileManagerCallbackCoordinator(private val view: FileManagerView)
             selection.clear()
             return@with true
         }
-        val parent = parentForSystemBack() ?: return@with false
+        val parent = parentForNavigation() ?: return@with false
         if (!dock.navigateBackTo(parent)) return@with false
         sorting.markOpened(dock.currentDirectory)
         onNavigationChanged()
@@ -282,10 +294,13 @@ internal class FileManagerCallbackCoordinator(private val view: FileManagerView)
         }
     }
 
-    private fun parentForSystemBack(): File? {
+    private fun parentForNavigation(): File? {
         if (com.ane.filemanager.navigation.RecentLocation.isRecent(view.currentDirectory) ||
             sameDirectory(view.currentDirectory, view.storageRoot) ||
             view.tabs.any { it.external && sameDirectory(it.directory, view.currentDirectory) }) return null
+        view.dock.currentTab.navigationRoot?.let { boundary ->
+            if (sameDirectory(view.currentDirectory, boundary)) return null
+        }
         return view.currentDirectory.parentFile?.takeIf { it.isDirectory && it.canRead() }
     }
 

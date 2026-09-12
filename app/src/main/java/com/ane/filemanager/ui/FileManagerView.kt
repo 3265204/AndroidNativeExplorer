@@ -45,7 +45,6 @@ import java.util.Locale
 /** Android View boundary: assembles render state and routes pointer/keyboard events to controllers. */
 internal class FileManagerView(
     internal val host: MainActivity,
-    private val launchDirectory: File? = null,
     internal val pickerAllowsMultiple: Boolean = false,
     private val fileFilter: (File) -> Boolean = { true },
     internal val onPickerFileOpened: ((File) -> Unit)? = null,
@@ -95,6 +94,12 @@ internal class FileManagerView(
                 dockMotion.revealContent()
             }
             selection.retain(items)
+            pendingLocatedFile?.takeIf { it in items }?.let { file ->
+                selection.replace(file)
+                renderer.restartFileMarquee(file)
+                pendingLocatedFile = null
+                pendingFileScroll = file
+            }
             scrollY = scrollY.coerceAtLeast(0f)
             invalidate()
         }
@@ -119,6 +124,9 @@ internal class FileManagerView(
     internal lateinit var lastActiveTab: BrowserTab
     internal var lastActiveIndex = 0
     internal var pendingContentRevealPath: String? = null
+    private var externalFile: File? = null
+    private var pendingLocatedFile: File? = null
+    private var pendingFileScroll: File? = null
     internal var busyText: String? = null
     internal var systemInsets = UiInsets()
 
@@ -171,9 +179,6 @@ internal class FileManagerView(
             activeDirectory = restored?.activeDirectory ?: root,
             onChanged = ::persistDock
         )
-        launchDirectory
-            ?.takeIf { it.isDirectory && it.canRead() }
-            ?.let(dock::navigateTo)
         lastActiveTab = dock.currentTab
         lastActiveIndex = dock.activeIndex
         persistDock()
@@ -278,6 +283,15 @@ internal class FileManagerView(
 
     fun isVirtualDirectory(): Boolean = com.ane.filemanager.navigation.RecentLocation.isRecent(currentDirectory)
 
+    fun showFileLocation(location: File, navigationRoot: File? = null) {
+        val directory = if (location.isDirectory) location else location.parentFile ?: return
+        externalFile = location.takeIf(File::isFile)
+        pendingLocatedFile = externalFile
+        pendingFileScroll = null
+        if (navigationRoot != null) callbacks.navigateToTransient(directory, navigationRoot)
+        else callbacks.navigateTo(directory)
+    }
+
     internal fun chooseOnboardingLayout(mode: LayoutMode) {
         appearance.previewLayoutMode(mode)
         onboarding.selectLayout(mode)
@@ -340,6 +354,11 @@ internal class FileManagerView(
             }
         }
         val directory = currentDirectory
+        if (externalFile?.parentFile != directory) {
+            externalFile = null
+            pendingLocatedFile = null
+            pendingFileScroll = null
+        }
         val changingDirectory = displayedDirectoryPath != directory.absolutePath
         directoryTransitioning = changingDirectory
         if (changingDirectory) {
@@ -347,7 +366,7 @@ internal class FileManagerView(
             invalidate()
         }
         val mode = sorting.mode
-        directoryLoader.load(directory, appearance.showHidden) { listed ->
+        directoryLoader.load(directory, appearance.showHidden, includeFile = externalFile) { listed ->
             val collator = Collator.getInstance(Locale.getDefault()).apply { strength = Collator.PRIMARY }
             sorting.sorted(listed, mode, collator)
         }
@@ -403,6 +422,11 @@ internal class FileManagerView(
         ))
         maxScroll = renderer.maxScroll
         scrollY = scrollY.coerceIn(0f, maxScroll)
+        pendingFileScroll?.let { file ->
+            pendingFileScroll = null
+            scrollY = renderer.scrollToRevealFile(file, scrollY)
+            postInvalidateOnAnimation()
+        }
         maxDockScroll = renderer.maxDockScroll
         dockScrollX = dockScrollX.coerceIn(0f, maxDockScroll)
         if (revealActiveTab) {

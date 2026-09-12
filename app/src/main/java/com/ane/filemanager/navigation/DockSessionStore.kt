@@ -70,7 +70,9 @@ internal class DockSessionStore(context: Context) {
     fun save(tabs: List<BrowserTab>, activeIndex: Int, durable: Boolean = false) {
         if (tabs.isEmpty()) return
         val savedTabs = JSONArray()
-        tabs.filter { !it.external && !RecentLocation.isRecent(it.directory) }.forEach { tab ->
+        tabs.filter {
+            !it.external && it.navigationRoot == null && !RecentLocation.isRecent(it.directory)
+        }.forEach { tab ->
             savedTabs.put(JSONObject().apply {
                 put("label", tab.label)
                 put("path", canonicalPath(tab.directory))

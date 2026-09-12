@@ -10,7 +10,7 @@ class BuildVariantVersionTest {
     fun debugBuildUsesBetaVersionName() {
         assertTrue(BuildConfig.DEBUG)
         assertTrue(BuildConfig.APPLICATION_ID.endsWith(".beta"))
-        assertEquals(5, BuildConfig.VERSION_CODE)
+        assertEquals(6, BuildConfig.VERSION_CODE)
         assertEquals("0.3.3-beta", BuildConfig.VERSION_NAME)
     }
 }

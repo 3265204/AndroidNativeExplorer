@@ -9,5 +9,7 @@ internal data class BrowserTab(
     var pinned: Boolean = false,
     val history: ArrayDeque<File> = ArrayDeque(),
     val fixed: Boolean = false,
-    val external: Boolean = false
+    val external: Boolean = false,
+    /** A session-only browsing ceiling, used for imported files from other apps. */
+    val navigationRoot: File? = null
 )

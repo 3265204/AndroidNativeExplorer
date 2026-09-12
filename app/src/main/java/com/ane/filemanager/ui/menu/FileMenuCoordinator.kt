@@ -240,7 +240,7 @@ internal class FileMenuCoordinator(
                 label = s(R.string.setting_tab_manager),
                 run = beginDockManagement
             ))
-            if (!dock.isFixed(index)) add(MenuAction(s(if (tab.pinned) {
+            if (!dock.isFixed(index) && tab.navigationRoot == null) add(MenuAction(s(if (tab.pinned) {
                 R.string.action_unpin_tab
             } else {
                 R.string.action_pin_tab

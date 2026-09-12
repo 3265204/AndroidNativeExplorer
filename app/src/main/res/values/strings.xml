@@ -6,6 +6,10 @@
     <string name="downloads">下载</string>
     <string name="documents">文档</string>
     <string name="pictures">图片</string>
+    <string name="external_location_title">定位文件</string>
+    <string name="external_location_copy_path">复制路径</string>
+    <string name="external_location_restricted">原文件位置：%1$s\n\nANE 目前无法浏览这个目录。来源应用对单个文件的授权不包含整个目录的访问权限；其他应用的私有目录通常需要 Root 授权。文件已删除时也无法进入原位置。</string>
+    <string name="external_location_unavailable">无法访问原文件所在目录。来源应用可能只提供了临时文件，或文件位于受限制的目录。请先在来源应用中保存到“下载”等公共目录，再用 ANE 定位。</string>
     <string name="tab_number">标签 %1$d</string>
 
     <string name="tutorial_layout_title">选择显示模式</string>

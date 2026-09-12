@@ -52,6 +52,32 @@ class DockSessionControllerTest {
     }
 
     @Test
+    fun `external file sessions are temporary and cannot be pinned`() {
+        val base = Files.createTempDirectory("ane-external-location").toFile()
+        try {
+            val storage = File(base, "storage").apply { mkdirs() }
+            val session = File(base, "CleanOnExit/locate-test").apply { mkdirs() }
+            val controller = controller(
+                storage,
+                listOf(BrowserTab("Storage", storage, pinned = true)),
+                storage
+            )
+
+            assertTrue(controller.navigateToTransient(session, session))
+            assertEquals(session, controller.currentDirectory)
+            assertEquals(session, controller.currentTab.navigationRoot)
+            assertFalse(controller.currentTab.pinned)
+
+            controller.pin(controller.activeIndex)
+            assertFalse(controller.currentTab.pinned)
+            assertEquals(1, controller.closeTemporaryTabs())
+            assertEquals(storage, controller.currentDirectory)
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `pinned tab must be unpinned before it can be closed`() {
         val root = File("/storage")
         val downloads = File(root, "Download")
