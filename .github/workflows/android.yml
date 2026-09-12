@@ -21,8 +21,13 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Gradle
+      # setup-gradle persists Gradle User Home (dependencies and the local build
+      # cache) between workflow runs. org.gradle.caching=true in
+      # gradle.properties lets cacheable task outputs be restored as well.
+      - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-cleanup: on-success
 
       - name: Test, lint, and assemble
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
