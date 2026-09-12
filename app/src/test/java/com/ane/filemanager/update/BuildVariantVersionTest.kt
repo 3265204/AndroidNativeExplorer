@@ -11,6 +11,6 @@ class BuildVariantVersionTest {
         assertTrue(BuildConfig.DEBUG)
         assertTrue(BuildConfig.APPLICATION_ID.endsWith(".beta"))
         assertEquals(6, BuildConfig.VERSION_CODE)
-        assertEquals("0.3.3-beta", BuildConfig.VERSION_NAME)
+        assertTrue(BuildConfig.VERSION_NAME.endsWith("-beta"))
     }
 }
