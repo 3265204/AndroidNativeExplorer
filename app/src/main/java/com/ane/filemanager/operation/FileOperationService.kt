@@ -399,7 +399,7 @@ internal class FileOperationService {
                 return FileResult.Failure(FileProblem(FileFailure.MOVE_FAILED, record.original.name))
             }
         }
-        removeTrashBatch(records)
+        removeTrashBatches(records)
         return FileResult.Success(Unit)
     }
 
@@ -419,11 +419,14 @@ internal class FileOperationService {
         if (trashRoot.exists()) FileOps.delete(trashRoot)
     }
 
-    private fun removeTrashBatch(records: List<TrashRecord>) {
-        val batch = records.firstOrNull()?.trashed?.parentFile ?: return
-        val root = batch.parentFile
-        FileOps.delete(batch)
-        if (root?.listFiles()?.isEmpty() == true) root.delete()
+    private fun removeTrashBatches(records: List<TrashRecord>) {
+        records.mapNotNull { it.trashed.parentFile }
+            .distinctBy { it.absolutePath }
+            .forEach { batch ->
+                val root = batch.parentFile
+                FileOps.delete(batch)
+                if (root?.listFiles()?.isEmpty() == true) root.delete()
+            }
     }
 
     private fun isValidName(name: String): Boolean =

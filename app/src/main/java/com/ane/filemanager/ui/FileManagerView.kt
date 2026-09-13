@@ -106,7 +106,9 @@ internal class FileManagerView(
     }
 
     internal val storageRoot = onboardingWorkspace?.root ?: host.initialDirectory()
-    internal val transactions = FileTransactionService(storageRoot)
+    internal val transactions = FileTransactionService(storageRoot) {
+        com.ane.filemanager.storage.StorageLocations.mounted(context).map { it.directory }
+    }
     internal val dockStore = DockSessionStore(context)
     internal lateinit var dock: DockSessionController
     internal val tabs get() = dock.tabs

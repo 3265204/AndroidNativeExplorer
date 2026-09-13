@@ -18,10 +18,12 @@ import java.util.concurrent.atomic.AtomicReference
  * final filesystem mutations and their history updates. Expensive plugin computation belongs on
  * the plugin executor before it enters this queue.
  */
-internal class FileTransactionService(rootDirectory: File) {
+internal class FileTransactionService(
+    private val rootDirectory: File,
+    private val mountedStorageRoots: () -> List<File> = { listOf(rootDirectory) }
+) {
     internal val files = FileOperationService()
     internal val history = FileHistoryController()
-    internal val trashDirectory = File(rootDirectory, ".ane-filemanager-trash")
 
     private val closed = AtomicBoolean(false)
     private val workerThread = AtomicReference<Thread?>()
@@ -33,7 +35,7 @@ internal class FileTransactionService(rootDirectory: File) {
     val canRedo get() = history.canRedo
 
     init {
-        execute { files.cleanupTrash(trashDirectory) }
+        execute { trashDirectories().forEach(files::cleanupTrash) }
     }
 
     /** Queues an asynchronous mutation; callers must not put unrelated long-running work here. */
@@ -111,6 +113,34 @@ internal class FileTransactionService(rootDirectory: File) {
         }
     }
 
+    /**
+     * Moves every source into a trash directory on the same mounted storage volume.
+     *
+     * A same-volume move is normally a metadata-only rename. Keeping this routing here also lets a
+     * batch span multiple volumes while preserving one history action for the caller.
+     */
+    fun deleteToTrash(targets: List<File>): FileResult<List<TrashRecord>> {
+        val storageRoots = storageRoots()
+        val groups = linkedMapOf<String, Pair<File, MutableList<File>>>()
+        targets.forEach { target ->
+            val trash = trashDirectoryFor(target, storageRoots)
+            val key = canonicalPath(trash)
+            groups.getOrPut(key) { trash to mutableListOf() }.second += target
+        }
+
+        val records = mutableListOf<TrashRecord>()
+        groups.values.forEach { (trash, sources) ->
+            when (val result = files.deleteToTrash(sources, trash)) {
+                is FileResult.Success -> records += result.value
+                is FileResult.Failure -> {
+                    if (records.isNotEmpty()) files.restoreTrash(records)
+                    return result
+                }
+            }
+        }
+        return FileResult.Success(records)
+    }
+
     /** Records an output created by a plugin as one reversible history node. */
     fun registerCreatedOutput(output: File, label: String = output.name) {
         if (!output.exists()) return
@@ -121,7 +151,7 @@ internal class FileTransactionService(rootDirectory: File) {
                 if (!output.exists()) {
                     FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, output.name))
                 } else {
-                    files.deleteToTrash(listOf(output), trashDirectory).mapValue { records ->
+                    deleteToTrash(listOf(output)).mapValue { records ->
                         trashRecords = records
                     }
                 }
@@ -148,6 +178,39 @@ internal class FileTransactionService(rootDirectory: File) {
         if (closed.compareAndSet(false, true)) executor.shutdown()
     }
 
+    internal fun trashDirectoryFor(file: File): File = trashDirectoryFor(file, storageRoots())
+
+    private fun trashDirectoryFor(file: File, storageRoots: List<StorageRoot>): File {
+        val sourcePath = canonicalPath(file)
+        val volume = storageRoots
+            .filter { root -> sourcePath == root.path || sourcePath.startsWith(root.path + File.separator) }
+            .maxByOrNull { it.path.length }
+            ?.directory
+            ?: rootDirectory
+        return File(volume, TRASH_DIRECTORY_NAME)
+    }
+
+    private fun trashDirectories(): List<File> = storageRoots()
+        .map { root -> File(root.directory, TRASH_DIRECTORY_NAME) }
+        .distinctBy(::canonicalPath)
+
+    private fun storageRoots(): List<StorageRoot> {
+        val mounted = try {
+            mountedStorageRoots()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        return (mounted + rootDirectory)
+            .map { directory -> StorageRoot(directory, canonicalPath(directory)) }
+            .distinctBy(StorageRoot::path)
+    }
+
+    private fun canonicalPath(file: File): String = try {
+        file.canonicalPath
+    } catch (_: IOException) {
+        file.absolutePath
+    }
+
     private fun restoreBytes(file: File, bytes: ByteArray): FileResult<Unit> = try {
         TextFileService.writeBytes(file, bytes)
         FileResult.Success(Unit)
@@ -166,5 +229,8 @@ internal class FileTransactionService(rootDirectory: File) {
 
     private companion object {
         const val FILE_OPERATION_THREAD_NAME = "ane-file-operation"
+        const val TRASH_DIRECTORY_NAME = ".ane-filemanager-trash"
     }
+
+    private data class StorageRoot(val directory: File, val path: String)
 }

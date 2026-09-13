@@ -32,7 +32,6 @@ internal class FileActionController(
     private val files get() = transactions.files
     private val closed = AtomicBoolean(false)
     private val history get() = transactions.history
-    private val trashDirectory get() = transactions.trashDirectory
     private var clipboard = listOf<File>()
 
     private var clipboardCut: Boolean = false
@@ -114,7 +113,7 @@ internal class FileActionController(
         val targets = selectedFiles()
         if (targets.isEmpty()) return
         host.confirm(s(R.string.dialog_delete_title, targets.size), s(R.string.dialog_delete_message)) {
-            performJob(s(R.string.status_deleting), { files.deleteToTrash(targets, trashDirectory) }) { records ->
+            performJob(s(R.string.status_deleting), { transactions.deleteToTrash(targets) }) { records ->
                 if (records.isNotEmpty()) {
                     recordUndo(deletedFilesAction(records))
                 }
@@ -294,7 +293,7 @@ internal class FileActionController(
     private fun rename(file: File, name: String, policy: RenameConflictPolicy) {
         performJob(
             s(R.string.status_renaming),
-            { files.rename(file, name, policy, trashDirectory) }
+            { files.rename(file, name, policy, transactions.trashDirectoryFor(file)) }
         ) { record -> applyRename(record) }
     }
 
@@ -324,7 +323,7 @@ internal class FileActionController(
                         currentRecord.original,
                         currentRecord.result.name,
                         policy,
-                        trashDirectory
+                        transactions.trashDirectoryFor(currentRecord.original)
                     ).map { repeated -> currentRecord = repeated }
                 }
             ))
@@ -364,7 +363,7 @@ internal class FileActionController(
         targets.firstOrNull { !it.exists() }?.let { missing ->
             return FileResult.Failure(FileProblem(FileFailure.SOURCE_MISSING, missing.name))
         }
-        return files.deleteToTrash(targets, trashDirectory)
+        return transactions.deleteToTrash(targets)
     }
 
     private inline fun <T> FileResult<T>.map(onSuccess: (T) -> Unit): FileResult<Unit> = when (this) {
