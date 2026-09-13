@@ -24,7 +24,8 @@ pluginmanager                     responsible only for install, discovery, enabl
 ├─ plugin/image/{code,res}         image viewing, zoom and its own copy
 ├─ plugin/video/{code,res}         video playback, directory switching and its own copy
 ├─ plugin/audio/{code,res}         audio playback, directory switching and its own copy
-└─ plugin/text/{code,res}          text editing, encoding, highlighting and its own copy
+├─ plugin/text/{code,res}          text editing, encoding, highlighting and its own copy
+└─ plugin/remotestorage/{code,res} disabled-by-default network file management and WebDAV transport
 ```
 
 ## Entry point and lifecycle

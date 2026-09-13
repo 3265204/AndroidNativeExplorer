@@ -1,0 +1,17 @@
+{
+  "id": "ane.remote-storage",
+  "name": "RemoteStorage",
+  "version": "1.0.0",
+  "description": "统一管理文件系统、对象存储与云盘；启用后从应用菜单底部的“管理网络存储”进入。WebDAV 原生接入，其他后端通过 WebDAV 网关接入。",
+  "defaultLocale": "zh",
+  "localizations": {
+    "en": {
+      "name": "RemoteStorage",
+      "description": "Manage file-system, object-storage and cloud-drive backends from “Manage network storage” at the bottom of the app menu. Native WebDAV; other providers use a WebDAV gateway."
+    }
+  },
+  "apiVersion": 3,
+  "entryClass": "com.ane.filemanager.plugin.remotestorage.RemoteStoragePlugin",
+  "priority": 20,
+  "defaultEnabled": false
+}

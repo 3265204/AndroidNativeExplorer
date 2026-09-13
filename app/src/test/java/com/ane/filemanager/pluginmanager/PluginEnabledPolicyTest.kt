@@ -8,6 +8,7 @@ class PluginEnabledPolicyTest {
     @Test
     fun manifestDefaultControlsFirstAppearance() {
         assertFalse(resolvePluginEnabled("ane.terminal", false, emptySet(), emptySet()))
+        assertFalse(resolvePluginEnabled("ane.remote-storage", false, emptySet(), emptySet()))
         assertTrue(resolvePluginEnabled("ane.archive", true, emptySet(), emptySet()))
     }
 

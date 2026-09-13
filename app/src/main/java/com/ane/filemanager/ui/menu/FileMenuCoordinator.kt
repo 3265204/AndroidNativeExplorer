@@ -200,6 +200,11 @@ internal class FileMenuCoordinator(
                     PluginManagerDialog(host, plugins, dock.currentDirectory, x, y).show()
                 }
             ))
+            val pluginDirectory = dock.currentDirectory.takeIf(File::isDirectory)
+                ?: host.initialDirectory()
+            plugins.appActions(pluginDirectory).forEach { action ->
+                add(MenuAction(action.label, run = action.run))
+            }
         }
         menu.open(
             MenuKind.APP,

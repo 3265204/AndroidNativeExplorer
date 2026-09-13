@@ -71,6 +71,7 @@ android {
             'src/main/java/com/ane/filemanager/plugin/text/res',
             'src/main/java/com/ane/filemanager/plugin/terminal/res',
             'src/main/java/com/ane/filemanager/plugin/video/res',
+            'src/main/java/com/ane/filemanager/plugin/remotestorage/res',
             'src/main/java/com/ane/filemanager/pluginmanager/res'
         ]
         main.assets.srcDirs += [
@@ -79,7 +80,8 @@ android {
             'src/main/java/com/ane/filemanager/plugin/image/assets',
             'src/main/java/com/ane/filemanager/plugin/text/assets',
             'src/main/java/com/ane/filemanager/plugin/video/assets',
-            'src/main/java/com/ane/filemanager/plugin/terminal/assets'
+            'src/main/java/com/ane/filemanager/plugin/terminal/assets',
+            'src/main/java/com/ane/filemanager/plugin/remotestorage/assets'
         ]
     }
 
@@ -97,7 +99,10 @@ dependencies {
     implementation 'org.tukaani:xz:1.10'
     implementation 'net.lingala.zip4j:zip4j:2.11.6'
     implementation 'com.github.junrar:junrar:8.1.0'
+    // OkHttp 4.x keeps this non-AndroidX app compatible while providing modern TLS/WebDAV I/O.
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     runtimeOnly 'org.slf4j:slf4j-nop:2.0.17'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 }

@@ -24,7 +24,8 @@ pluginmanager                     只负责安装、发现、启停与调用边�
 ├─ plugin/image/{代码,res}          图片查看、缩放与自有文案
 ├─ plugin/video/{代码,res}          视频播放、目录切换与自有文案
 ├─ plugin/audio/{代码,res}          音频播放、目录切换与自有文案
-└─ plugin/text/{代码,res}           文本编辑、编码、高亮与自有文案
+├─ plugin/text/{代码,res}           文本编辑、编码、高亮与自有文案
+└─ plugin/remotestorage/{代码,res}  默认停用的网络文件管理与 WebDAV 传输
 ```
 
 ## 入口与生命周期

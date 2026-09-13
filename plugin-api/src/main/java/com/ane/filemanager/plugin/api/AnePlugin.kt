@@ -30,6 +30,11 @@ interface PluginDirectoryActionProvider {
     fun directoryActions(directory: PluginFile, host: PluginHost): List<PluginFileAction>
 }
 
+/** Optional app-menu actions. [directory] is the current local directory for output placement. */
+interface PluginAppActionProvider {
+    fun appActions(directory: PluginFile, host: PluginHost): List<PluginFileAction>
+}
+
 /** Optional visual hint. The plugin remains the owner of file-type recognition. */
 interface PluginFileIconProvider {
     fun fileIcon(file: PluginFile): PluginFileIcon?

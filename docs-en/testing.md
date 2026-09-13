@@ -109,6 +109,8 @@ The MuMu ADB address depends on local configuration; the common current example 
 - Encrypted archives automatically show the password prompt; a wrong password can be retried, and passwords are not written to logs or disk.
 - Corrupted archives and archives containing `../` escape paths fail to extract, leaving no temporary directory or partial files.
 - "Manage plugins" in the top-left enters a secondary menu; import, disable, enable and uninstall update actions immediately.
+- RemoteStorage is disabled on first install; enabling it adds “Manage network storage” below “Manage plugins” in the app menu, plus the Network Storage directory action and upload selection action. Disabling it removes all of these entries immediately.
+- RemoteStorage keeps the FileSystemLike, ObjectStorage and CloudDrive backend groups; WebDAV is marked native while every other backend clearly requires a WebDAV gateway.
 - Tab management and plugin management use the same title, safe area and enter/exit shell; switching pages in a narrow window does not jump or cross the status bar.
 - The top-left menu shows only a unified "Settings" entry; language, theme, display mode, font, icon, line spacing and hidden files are all inside the settings secondary page.
 - Font, icon and line-spacing sliders update the value and file area in real time while dragging, and persist after restart; cards reflow dynamically in portrait/landscape and small windows and sliders remain precisely operable.

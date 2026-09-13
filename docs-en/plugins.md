@@ -5,10 +5,18 @@ ANE uses a plain ZIP as the in-app plugin installer. The user first navigates to
 ## 1. Boundaries and directories
 
 - The common ABI, UI, input and file capability contracts all live in the standalone `plugin-api` module, using the `plugin.api`, `plugin.api.ui`, `plugin.api.input` and `plugin.api.file` packages respectively; the host implementations live in `app/ui`, `app/input` and `app/core/file`, and the capability encapsulation does not change the current v3 protocol.
-- Built-in plugins live in `plugin/archive`, `plugin/text`, `plugin/audio`, `plugin/image`, `plugin/video`, `plugin/terminal` respectively.
+- Built-in plugins live in `plugin/archive`, `plugin/text`, `plugin/audio`, `plugin/image`, `plugin/video`, `plugin/terminal`, and `plugin/remotestorage`. RemoteStorage is disabled by default and contributes directory and selection actions for network-file management after the user enables it.
 - Each plugin owns its extensions, MIME types, file-signature detection, parsing, passwords, media behavior, UI and runtime resources; the host only provides a media-type-agnostic same-directory sequence implementation.
 - Under `plugin`, forbid creating a `shared`, `support`, `runtime` or `viewer` top-level directory; plugins must not share a common file-type table or an implicit runtime layer.
 - Adding a built-in plugin only adds the implementation class and `assets/ane-plugins/<id>.json`; do not edit the type list in `PluginRegistry`.
+
+RemoteStorage uses this unified backend taxonomy:
+
+- FileSystemLike: WebDAV, SMB, NFS, SFTP, and FTP.
+- ObjectStorage: S3, S3 Compatible, Azure Blob, and GCS.
+- CloudDrive: Google Drive, OneDrive, Dropbox, Baidu Netdisk, and Aliyun Drive.
+
+This version implements WebDAV natively. Every other backend keeps its real type identity and explicitly requires a user-controlled WebDAV gateway during setup; it is not presented as native protocol support.
 
 ## 2. API v3
 
@@ -80,7 +88,17 @@ class TerminalPlugin : AnePlugin, PluginDirectoryActionProvider {
 }
 ```
 
-Plugin actions are routed by scope automatically: `fileActions` go to the file long-press menu, `selectionActions` go under the selection-state “Tools” tree node, and `directoryActions` go under the normal-state “Tools” tree node. All three must be returned dynamically; disabling or uninstalling the plugin removes them automatically. The host must not hardcode plugin IDs, archive formats or button copy. Adding another plugin of these types does not require changing `FileMenuCoordinator`.
+Implement `PluginAppActionProvider` when a plugin needs a global app-menu entry for a management page or similar UI. These entries appear after “Manage plugins”; the host still supplies the current local directory for downloads and other output operations:
+
+```kotlin
+class RemoteStoragePlugin : AnePlugin, PluginAppActionProvider {
+    override fun appActions(directory: PluginFile, host: PluginHost) = listOf(
+        PluginFileAction("manage-remote-storage", "Manage network storage") { /* open page */ }
+    )
+}
+```
+
+Plugin actions are routed by scope automatically: `fileActions` go to the file long-press menu, `selectionActions` go under the selection-state “Tools” tree node, `directoryActions` go under the normal-state “Tools” tree node, and `appActions` go to the app menu. All four must be returned dynamically; disabling or uninstalling the plugin removes them automatically. The host must not hardcode plugin IDs, archive formats or button copy. Adding another plugin of these types does not require changing `FileMenuCoordinator`.
 
 For a dedicated file icon, a plugin may additionally implement `PluginFileIconProvider`. The file type is still recognized by the plugin, e.g. an archive plugin returns `PluginFileIcon.ARCHIVE`; the host only draws the corresponding semantic icon and does not maintain an archive-extension list. Files not handled by any plugin are routed to Android's external apps uniformly. ANE first shows "Just once / Always": the former only applies to the current open operation, and the latter remembers the chosen app by MIME type (extension for unknown MIME). "Open with" in the file long-press menu shows the same modes again and allows overriding the existing association.
 

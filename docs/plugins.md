@@ -5,10 +5,18 @@ ANE 使用普通 ZIP 作为应用内插件安装。用户先在 ANE 中进入 ZI
 ## 1. 边界与目录
 
 - 公共 ABI、UI、输入和文件能力契约都位于独立 `plugin-api` 模块，分别使用 `plugin.api`、`plugin.api.ui`、`plugin.api.input` 与 `plugin.api.file` 包；宿主实现位于 `app/ui`、`app/input` 和 `app/core/file`，能力封装不改变当前 v3 协议。
-- 内置插件分别位于 `plugin/archive`、`plugin/text`、`plugin/audio`、`plugin/image`、`plugin/video`、`plugin/terminal`。
+- 内置插件分别位于 `plugin/archive`、`plugin/text`、`plugin/audio`、`plugin/image`、`plugin/video`、`plugin/terminal`、`plugin/remotestorage`。RemoteStorage 默认停用，用户启用后通过目录动作和选区动作管理网络文件。
 - 每个插件自行拥有扩展名、MIME、文件签名探测、解析、密码、媒体行为、界面和运行期资源；宿主只提供无媒体类型的同目录序列实现。
 - `plugin` 下禁止建立 `shared`、`support`、`runtime` 或 `viewer` 总目录；插件之间不得共享文件类型总表或隐式运行层。
 - 新增内置插件只添加实现类和 `assets/ane-plugins/<id>.json`，不得编辑 `PluginRegistry` 中的类型列表。
+
+RemoteStorage 的统一后端分类为：
+
+- FileSystemLike：WebDAV、SMB、NFS、SFTP、FTP。
+- ObjectStorage：S3、S3 Compatible、Azure Blob、GCS。
+- CloudDrive：Google Drive、OneDrive、Dropbox、百度网盘、阿里云盘。
+
+当前版本原生实现 WebDAV；其余后端保留真实类型标识，并在配置前明确说明需要用户自管的 WebDAV 网关，不宣称原生协议支持。
 
 ## 2. API v3
 
@@ -80,7 +88,17 @@ class TerminalPlugin : AnePlugin, PluginDirectoryActionProvider {
 }
 ```
 
-插件行为按作用域自动路由：`fileActions` 进入文件长按菜单，`selectionActions` 进入多选状态的“工具”树节点，`directoryActions` 进入普通状态的“工具”树节点。三类动作都必须由插件动态返回；停用或卸载插件后会自动消失。宿主不得硬编码插件 ID、压缩格式或按钮文案。新增这类插件不需要再次修改 `FileMenuCoordinator`。
+需要在应用主菜单提供管理页等全局入口时，实现 `PluginAppActionProvider`。入口排列在“管理插件”之后；宿主仍会传入当前本地目录，供下载等输出操作使用：
+
+```kotlin
+class RemoteStoragePlugin : AnePlugin, PluginAppActionProvider {
+    override fun appActions(directory: PluginFile, host: PluginHost) = listOf(
+        PluginFileAction("manage-remote-storage", "管理网络存储") { /* 打开管理页 */ }
+    )
+}
+```
+
+插件行为按作用域自动路由：`fileActions` 进入文件长按菜单，`selectionActions` 进入多选状态的“工具”树节点，`directoryActions` 进入普通状态的“工具”树节点，`appActions` 进入应用主菜单。四类动作都必须由插件动态返回；停用或卸载插件后会自动消失。宿主不得硬编码插件 ID、压缩格式或按钮文案。新增这类插件不需要再次修改 `FileMenuCoordinator`。
 
 插件若需要专用文件图标，可额外实现 `PluginFileIconProvider`。文件类型仍由插件识别，例如压缩插件返回 `PluginFileIcon.ARCHIVE`；宿主只绘制对应的语义图标，不维护压缩扩展名列表。未被插件接管的文件统一交给 Android 外部应用路由。ANE 先统一显示“仅此一次 / 始终”：前者只用于当前打开操作，后者按 MIME 类型（未知 MIME 按扩展名）记住所选应用。文件长按菜单中的“选择打开方式”会再次显示相同模式，并允许覆盖原有关联。
 

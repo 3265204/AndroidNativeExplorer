@@ -16,6 +16,7 @@ ANE (Android Native Explorer) is an Android local file manager written in Kotlin
 - Mouse right-click and common desktop shortcuts.
 - Automatic image, video and audio playlists within a folder.
 - Text editing, save, Tab/Shift+Tab indentation and basic code highlighting.
+- Optional built-in RemoteStorage plugin for WebDAV network-file management; disabled by default on first install.
 - Unified Dock tab management: per-item switch, pin, close, bulk cleanup, and control over whether to restore temporary tabs on startup.
 
 ## Usage

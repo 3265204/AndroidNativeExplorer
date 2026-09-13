@@ -23,6 +23,7 @@ import com.ane.filemanager.plugin.api.PluginFileIcon
 import com.ane.filemanager.plugin.api.PluginFileIconProvider
 import com.ane.filemanager.plugin.api.PluginHost
 import com.ane.filemanager.plugin.api.PluginApi
+import com.ane.filemanager.plugin.api.PluginAppActionProvider
 import com.ane.filemanager.plugin.api.PluginDirectoryActionProvider
 import com.ane.filemanager.plugin.api.PluginSelectionActionProvider
 import com.ane.filemanager.plugin.api.PluginTaskResult
@@ -190,6 +191,18 @@ internal class PluginRegistry(
             val provider = record.instance as? PluginDirectoryActionProvider
                 ?: return@flatMap emptyList()
             runCatching { provider.directoryActions(pluginDirectory, pluginHost) }
+                .getOrElse {
+                    activity.toast(activity.getString(R.string.plugin_runtime_error, record.descriptor.name))
+                    emptyList()
+                }.map { action -> action.guarded(record) }
+        }
+    }
+
+    fun appActions(directory: File): List<PluginAction> {
+        val pluginDirectory = directory.asPluginFile()
+        return records.flatMap { record ->
+            val provider = record.instance as? PluginAppActionProvider ?: return@flatMap emptyList()
+            runCatching { provider.appActions(pluginDirectory, pluginHost) }
                 .getOrElse {
                     activity.toast(activity.getString(R.string.plugin_runtime_error, record.descriptor.name))
                     emptyList()

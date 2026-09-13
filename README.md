@@ -16,6 +16,7 @@ ANE（Android Native Explorer）是使用 Kotlin 编写的 Android 本地文件�
 - 鼠标右键与常用桌面快捷键。
 - 文件夹内自动建立图片、视频和音频播放列表。
 - 文本编辑、保存、Tab/Shift+Tab 缩进和基础代码高亮。
+- 可选内置 RemoteStorage 插件，通过 WebDAV 管理网络文件；首次安装默认停用。
 - Dock 标签页统一管理：逐项切换、固定、关闭、批量清理，并可控制启动时是否恢复临时标签。
 
 ## 使用
